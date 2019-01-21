@@ -142,7 +142,7 @@ public class ServiceImpl implements Service {
                     e.printStackTrace();
                 }
                 if (sender != null && sender.getDisplayName() != null) {
-                    responseData.getPayload().setSearchableContent("@" + sender.getDisplayName() + "" + responseData.getPayload().getSearchableContent());
+                    responseData.getPayload().setSearchableContent("@" + sender.getDisplayName() + " " + responseData.getPayload().getSearchableContent());
                     responseData.getPayload().setMentionedType(1);
                     responseData.getPayload().setMentionedTarget(Arrays.asList(messageData.getSender()));
                 }
