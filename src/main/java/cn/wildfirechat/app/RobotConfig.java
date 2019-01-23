@@ -6,7 +6,7 @@ import org.springframework.context.annotation.PropertySource;
 
 @Configuration
 @ConfigurationProperties(prefix="robot")
-@PropertySource(value = "classpath:robot.properties")
+@PropertySource(value = "file:config/robot.properties")
 public class RobotConfig {
     String im_url;
     String im_secret;
