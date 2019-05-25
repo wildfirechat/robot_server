@@ -1,8 +1,6 @@
 package cn.wildfirechat.app;
 
-import cn.wildfirechat.app.pojo.LoginRequest;
-import cn.wildfirechat.app.pojo.SendCodeRequest;
-import cn.wildfirechat.sdk.model.SendMessageData;
+import cn.wildfirechat.pojos.SendMessageData;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

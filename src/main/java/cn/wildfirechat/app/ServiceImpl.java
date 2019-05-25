@@ -1,8 +1,10 @@
 package cn.wildfirechat.app;
 
 
-import cn.wildfirechat.sdk.ChatRobot;
-import cn.wildfirechat.sdk.HttpUtils;
+import cn.wildfirechat.common.ErrorCode;
+import cn.wildfirechat.pojos.*;
+import cn.wildfirechat.sdk.ChatConfig;
+import cn.wildfirechat.sdk.RobotService;
 import cn.wildfirechat.sdk.model.*;
 import com.google.gson.Gson;
 import org.slf4j.Logger;
@@ -11,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.PostConstruct;
+import javax.validation.Payload;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,7 +27,7 @@ public class ServiceImpl implements Service {
 
     @PostConstruct
     private void init() {
-        ChatRobot.init(mRobotConfig.getIm_id(), mRobotConfig.im_url, mRobotConfig.im_secret);
+        ChatConfig.initRobot(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
     }
 
 //    int ConversationType_Private = 0;
@@ -123,34 +126,35 @@ public class ServiceImpl implements Service {
                 }
             }
             SendMessageData responseData = new SendMessageData();
-            responseData.setConv(messageData.getConv());
-            if (messageData.getConv().getType() == 0) {
-                messageData.getConv().setTarget(messageData.getSender());
+            Conversation conversation = messageData.getConv();
+
+            if (conversation.getType() == 0) {
+                conversation.setTarget(messageData.getSender());
             }
+            MessagePayload payload = new MessagePayload();
             responseData.setSender(mRobotConfig.getIm_id());
-            responseData.setPayload(new MessagePayload());
-            responseData.getPayload().setType(1);
-            responseData.getPayload().setSearchableContent(response);
-            if (messageData.getConv().getType() == 1 && messageData.getPayload().getType() == 1) { //群里的文本，加上@信息
-                User sender = null;
+            payload.setType(1);
+            payload.setSearchableContent(response);
+            if (conversation.getType() == 1 && messageData.getPayload().getType() == 1) { //群里的文本，加上@信息
+                InputOutputUserInfo sender = null;
                 try {
-                    IMResult<User> result = ChatRobot.getUserById(messageData.getSender());
-                    if (result.getCode() == IMResult.IMResultCode.IMRESULT_CODE_SUCCESS.code) {
+                    IMResult<InputOutputUserInfo> result = RobotService.getUserInfo(messageData.getSender());
+                    if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         sender = result.getResult();
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
                 if (sender != null && sender.getDisplayName() != null) {
-                    responseData.getPayload().setSearchableContent("@" + sender.getDisplayName() + " " + responseData.getPayload().getSearchableContent());
-                    responseData.getPayload().setMentionedType(1);
-                    responseData.getPayload().setMentionedTarget(Arrays.asList(messageData.getSender()));
+                    payload.setSearchableContent("@" + sender.getDisplayName() + " " + payload.getSearchableContent());
+                    payload.setMentionedType(1);
+                    payload.setMentionedTarget(Arrays.asList(messageData.getSender()));
                 }
             }
             try {
-                IMResult<SendMessageResult> result = ChatRobot.sendMessage(responseData);
+                IMResult<SendMessageResult> result = RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 if (result != null) {
-                    if (result.getCode() == IMResult.IMResultCode.IMRESULT_CODE_SUCCESS.code) {
+                    if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         LOG.info("Send response success");
                     } else {
                         LOG.error("Send response error {}", result.getCode());
