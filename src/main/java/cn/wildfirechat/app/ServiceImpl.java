@@ -45,7 +45,8 @@ public class ServiceImpl implements Service {
         if (!needResponse && messageData.getConv().getType() == 1) {
             if (messageData.getPayload() != null) {
                 if (messageData.getPayload().getMentionedType() == 2) {
-                    needResponse = true;
+                    //needResponse = true;
+                    needResponse = false; //@全体时，机器人就别乱回复捣乱了
                 } else if (messageData.getPayload().getMentionedType() == 1) {
                     if (messageData.getPayload().getMentionedTarget() != null && messageData.getPayload().getMentionedTarget().contains(mRobotConfig.getIm_id())) {
                         needResponse = true;
