@@ -69,41 +69,64 @@ public class ServiceImpl implements Service {
             String response = messageData.getPayload().getSearchableContent();
             boolean localResponse = true;
 
-            if (mRobotConfig.use_tuling && messageData.getPayload().getType() == 1) {
-                String searchReq = "{\n" + "\t\"reqType\":0,\n" + "    \"perception\": {\n" + "        \"inputText\": {\n" + "            \"text\": \"${TEXT}\"\n" + "        }\n" + "    },\n" + "    \"userInfo\": {\n" + "        \"apiKey\": \"${APIKEY}\",\n" + "        \"userId\": \"${USERID}\"\n" + "    }\n" + "}";
-                searchReq = searchReq.replace("${APIKEY}", mRobotConfig.getTuling_key()).replace("${USERID}", Math.abs(messageData.getSender().hashCode()) + "");
-                searchReq = searchReq.replace("${TEXT}", response);
+            response = response.replace("@小火", "").trim();
 
-                try {
-                    TulingResponse s = HttpUtils.post("http://openapi.tuling123.com/openapi/api/v2", searchReq, TulingResponse.class);
-                    if (s != null) {
-                        if(s.results != null && s.results.size() > 0) {
-                            for (TulingResponse.Result result:s.results
-                                 ) {
-                                if (result.values != null) {
-                                    if (!StringUtils.isEmpty(result.values.text)) {
-                                        if (localResponse) {
-                                            localResponse = false;
-                                            response = result.values.text;
-                                        } else {
-                                            response = response + " \n" + result.values.text;
+            if (messageData.getPayload().getType() == 1) {
+                if (response.contains("狗屁文章")) {
+                    response = response.replace("狗屁文章", "").trim();
+                    localResponse = false;
+                    response = BullshitGenerator.bullshit(response);
+                } else if(response.contains("地址") || response.contains("文档") || response.contains("论坛")) {
+                    localResponse = false;
+                    response = "项目地址在: https://github.com/wildfirechat。 文档地址在: http://docs.wildfirechat.cn。论坛地址在: http://bbs.wildfirechat.cn";
+                } else if(response.startsWith("公众号")) {
+                    localResponse = false;
+                    response = "请关注微信公众号：野火IM";
+                } else if(response.startsWith("价格") || response.startsWith("收费") || response.startsWith("费用")) {
+                    localResponse = false;
+                    response = "野火IM相关价格，请参考我们的文档: http://docs.wildfirechat.cn";
+                } else if(response.startsWith("商务") || response.startsWith("购买") || response.startsWith("联系")) {
+                    localResponse = false;
+                    response = "请微信联系 wildfirechat 或 wfchat 进行商务交流";
+                } else if(response.startsWith("问题") || response.startsWith("崩溃")) {
+                    localResponse = false;
+                    response = "请确保是按照文档进行对接使用。请检索github issue或者论坛bbs.wildfirechat.cn。如果还无法解决请提issue或者论坛发帖";
+                } else if (mRobotConfig.use_tuling) {
+                    String searchReq = "{\n" + "\t\"reqType\":0,\n" + "    \"perception\": {\n" + "        \"inputText\": {\n" + "            \"text\": \"${TEXT}\"\n" + "        }\n" + "    },\n" + "    \"userInfo\": {\n" + "        \"apiKey\": \"${APIKEY}\",\n" + "        \"userId\": \"${USERID}\"\n" + "    }\n" + "}";
+                    searchReq = searchReq.replace("${APIKEY}", mRobotConfig.getTuling_key()).replace("${USERID}", Math.abs(messageData.getSender().hashCode()) + "");
+                    searchReq = searchReq.replace("${TEXT}", response);
+
+                    try {
+                        TulingResponse s = HttpUtils.post("http://openapi.tuling123.com/openapi/api/v2", searchReq, TulingResponse.class);
+                        if (s != null) {
+                            if (s.results != null && s.results.size() > 0) {
+                                for (TulingResponse.Result result : s.results
+                                ) {
+                                    if (result.values != null) {
+                                        if (!StringUtils.isEmpty(result.values.text)) {
+                                            if (localResponse) {
+                                                localResponse = false;
+                                                response = result.values.text;
+                                            } else {
+                                                response = response + " \n" + result.values.text;
+                                            }
                                         }
-                                    }
 
-                                    if (!StringUtils.isEmpty(result.values.url)) {
-                                        if (localResponse) {
-                                            localResponse = false;
-                                            response = result.values.url;
-                                        } else {
-                                            response = response + " \n" + result.values.url;
+                                        if (!StringUtils.isEmpty(result.values.url)) {
+                                            if (localResponse) {
+                                                localResponse = false;
+                                                response = result.values.url;
+                                            } else {
+                                                response = response + " \n" + result.values.url;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
                 }
             }
 
