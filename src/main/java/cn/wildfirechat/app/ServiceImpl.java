@@ -132,14 +132,19 @@ public class ServiceImpl implements Service {
                     }
                 }
             } else if (messageData.getPayload().getType() == 2) {
+                localResponse = false;
                 response = "不好意思，我还不会看照片哟～";
             } else if (messageData.getPayload().getType() == 3) {
+                localResponse = false;
                 response = "不好意思，我还不会听声音哟～";
             } else if (messageData.getPayload().getType() == 4) {
+                localResponse = false;
                 response = "这是那里？我还没有学会看地图啊！";
             } else if (messageData.getPayload().getType() == 5) {
+                localResponse = false;
                 response = "我也想看视频，可惜我还没学会！";
             } else if (messageData.getPayload().getType() == 400) {
+                localResponse = false;
                 response = "别给我打电话了，我是个机器人，还不会接电话，还没有人教过我啊！";
 
                 MessagePayload payload = new MessagePayload();
