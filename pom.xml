@@ -5,7 +5,7 @@
 
 	<groupId>cn.wildfirechat</groupId>
 	<artifactId>robot</artifactId>
-	<version>0.21</version>
+	<version>0.22</version>
 	<packaging>jar</packaging>
 
 	<name>robot</name>
