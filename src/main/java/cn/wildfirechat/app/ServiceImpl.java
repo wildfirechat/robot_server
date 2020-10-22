@@ -62,9 +62,12 @@ public class ServiceImpl implements Service {
 //            int Location = 4;
 //            int Video = 5;
 //            int RichMedia = 6;
-//            int Custom = 7;
 //        }
         if (needResponse) {
+            Conversation conversation = messageData.getConv();
+            if (conversation.getType() == 0) {
+                conversation.setTarget(messageData.getSender());
+            }
 
             String response = messageData.getPayload().getSearchableContent();
             boolean localResponse = true;
@@ -128,6 +131,25 @@ public class ServiceImpl implements Service {
                         e.printStackTrace();
                     }
                 }
+            } else if (messageData.getPayload().getType() == 2) {
+                response = "不好意思，我还不会看照片哟～";
+            } else if (messageData.getPayload().getType() == 3) {
+                response = "不好意思，我还不会听声音哟～";
+            } else if (messageData.getPayload().getType() == 4) {
+                response = "这是那里？我还没有学会看地图啊！";
+            } else if (messageData.getPayload().getType() == 5) {
+                response = "我也想看视频，可惜我还没学会！";
+            } else if (messageData.getPayload().getType() == 400) {
+                response = "别给我打电话了，我是个机器人，还不会接电话，还没有人教过我啊！";
+
+                MessagePayload payload = new MessagePayload();
+                payload.setType(402);
+                payload.setContent(messageData.getPayload().getContent());
+                try {
+                    RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
 
             if(localResponse) {
@@ -149,14 +171,8 @@ public class ServiceImpl implements Service {
                     }
                 }
             }
-            SendMessageData responseData = new SendMessageData();
-            Conversation conversation = messageData.getConv();
 
-            if (conversation.getType() == 0) {
-                conversation.setTarget(messageData.getSender());
-            }
             MessagePayload payload = new MessagePayload();
-            responseData.setSender(mRobotConfig.getIm_id());
             payload.setType(1);
             payload.setSearchableContent(response);
             if (conversation.getType() == 1 && messageData.getPayload().getType() == 1) { //群里的文本，加上@信息
