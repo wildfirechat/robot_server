@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
+import sun.misc.BASE64Encoder;
 
 import javax.annotation.PostConstruct;
 import javax.validation.Payload;
@@ -131,16 +132,16 @@ public class ServiceImpl implements Service {
                         e.printStackTrace();
                     }
                 }
-            } else if (messageData.getPayload().getType() == 2) {
+            } else if (messageData.getPayload().getType() == 3) {
                 localResponse = false;
                 response = "不好意思，我还不会看照片哟～";
-            } else if (messageData.getPayload().getType() == 3) {
+            } else if (messageData.getPayload().getType() == 2) {
                 localResponse = false;
                 response = "不好意思，我还不会听声音哟～";
             } else if (messageData.getPayload().getType() == 4) {
                 localResponse = false;
                 response = "这是那里？我还没有学会看地图啊！";
-            } else if (messageData.getPayload().getType() == 5) {
+            } else if (messageData.getPayload().getType() == 6) {
                 localResponse = false;
                 response = "我也想看视频，可惜我还没学会！";
             } else if (messageData.getPayload().getType() == 400) {
@@ -150,6 +151,8 @@ public class ServiceImpl implements Service {
                 MessagePayload payload = new MessagePayload();
                 payload.setType(402);
                 payload.setContent(messageData.getPayload().getContent());
+                String reason = "{\"r\":5}";
+                payload.setBase64edData(new BASE64Encoder().encode(reason.getBytes()));
                 try {
                     RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 } catch (Exception e) {
