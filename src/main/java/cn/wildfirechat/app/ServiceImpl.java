@@ -155,6 +155,9 @@ public class ServiceImpl implements Service {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+            } else if(messageData.getPayload().getType() > 400 && messageData.getPayload().getType() < 500) {
+                //voip signal message, ignore it
+                return RestResult.ok();
             }
 
             if(localResponse) {
