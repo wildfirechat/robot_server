@@ -6,16 +6,18 @@ import org.springframework.context.annotation.PropertySource;
 
 @Configuration
 @ConfigurationProperties(prefix="robot")
-@PropertySource(value = "file:config/robot.properties")
+@PropertySource(value = "file:config/robot.properties", encoding = "UTF-8")
 public class RobotConfig {
-    String im_url;
-    String im_secret;
-    String im_id;
-    String im_name;
+    public String im_url;
+    public String im_secret;
+    public String im_id;
+    public String im_name;
 
-    boolean use_tuling;
+    public boolean use_tuling;
 
-    String tuling_key;
+    public String tuling_key;
+
+    public String public_addr;
 
     public boolean isUse_tuling() {
         return use_tuling;
@@ -63,5 +65,13 @@ public class RobotConfig {
 
     public void setIm_secret(String im_secret) {
         this.im_secret = im_secret;
+    }
+
+    public String getPublic_addr() {
+        return public_addr;
+    }
+
+    public void setPublic_addr(String public_addr) {
+        this.public_addr = public_addr;
     }
 }

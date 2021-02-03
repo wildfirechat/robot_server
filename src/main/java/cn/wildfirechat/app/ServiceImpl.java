@@ -1,6 +1,9 @@
 package cn.wildfirechat.app;
 
 
+import cn.wildfirechat.app.tuling.TulingResponse;
+import cn.wildfirechat.app.tuling.TulingService;
+import cn.wildfirechat.app.webhook.WebhookService;
 import cn.wildfirechat.common.ErrorCode;
 import cn.wildfirechat.pojos.*;
 import cn.wildfirechat.sdk.ChatConfig;
@@ -14,17 +17,20 @@ import org.springframework.util.StringUtils;
 import sun.misc.BASE64Encoder;
 
 import javax.annotation.PostConstruct;
-import javax.validation.Payload;
 import java.util.Arrays;
-import java.util.concurrent.ConcurrentHashMap;
 
 @org.springframework.stereotype.Service
 public class ServiceImpl implements Service {
     private static final Logger LOG = LoggerFactory.getLogger(ServiceImpl.class);
-    private static ConcurrentHashMap<String, Record> mRecords = new ConcurrentHashMap<>();
 
     @Autowired
     private RobotConfig mRobotConfig;
+
+    @Autowired
+    private WebhookService webhookService;
+
+    @Autowired
+    private TulingService tulingService;
 
     @PostConstruct
     private void init() {
@@ -37,7 +43,7 @@ public class ServiceImpl implements Service {
 //    int ConversationType_Channel = 3;
 //    int ConversationType_Thing = 4;
     @Override
-    public RestResult onReceiveMessage(SendMessageData messageData) {
+    public Object onReceiveMessage(SendMessageData messageData) {
         LOG.info("on receive message {}", new Gson().toJson(messageData));
         boolean needResponse = false;
         if (messageData.getConv().getType() == 0) {
@@ -73,14 +79,11 @@ public class ServiceImpl implements Service {
             String response = messageData.getPayload().getSearchableContent();
             boolean localResponse = true;
 
-            response = response.replace("@小火", "").trim();
-
+            LOG.info("msg:{}, robotName:{}", response, mRobotConfig.im_name);
+            response = response.replace("@" + mRobotConfig.im_name, "").trim();
+            LOG.info("msg:{}, robotName:{}", response, mRobotConfig.im_name);
             if (messageData.getPayload().getType() == 1) {
-                if (response.contains("狗屁文章")) {
-                    response = response.replace("狗屁文章", "").trim();
-                    localResponse = false;
-                    response = BullshitGenerator.bullshit(response);
-                } else if(response.contains("地址") || response.contains("文档") || response.contains("论坛")) {
+                if(response.contains("地址") || response.contains("文档") || response.contains("论坛")) {
                     localResponse = false;
                     response = "项目地址在: https://github.com/wildfirechat。 文档地址在: http://docs.wildfirechat.cn。论坛地址在: http://bbs.wildfirechat.cn";
                 } else if(response.startsWith("公众号")) {
@@ -95,42 +98,16 @@ public class ServiceImpl implements Service {
                 } else if(response.startsWith("问题") || response.startsWith("崩溃")) {
                     localResponse = false;
                     response = "请确保是按照文档进行对接使用。请检索github issue或者论坛bbs.wildfirechat.cn。如果还无法解决请提issue或者论坛发帖";
-                } else if (mRobotConfig.use_tuling) {
-                    String searchReq = "{\n" + "\t\"reqType\":0,\n" + "    \"perception\": {\n" + "        \"inputText\": {\n" + "            \"text\": \"${TEXT}\"\n" + "        }\n" + "    },\n" + "    \"userInfo\": {\n" + "        \"apiKey\": \"${APIKEY}\",\n" + "        \"userId\": \"${USERID}\"\n" + "    }\n" + "}";
-                    searchReq = searchReq.replace("${APIKEY}", mRobotConfig.getTuling_key()).replace("${USERID}", Math.abs(messageData.getSender().hashCode()) + "");
-                    searchReq = searchReq.replace("${TEXT}", response);
-
-                    try {
-                        TulingResponse s = HttpUtils.post("http://openapi.tuling123.com/openapi/api/v2", searchReq, TulingResponse.class);
-                        if (s != null) {
-                            if (s.results != null && s.results.size() > 0) {
-                                for (TulingResponse.Result result : s.results
-                                ) {
-                                    if (result.values != null) {
-                                        if (!StringUtils.isEmpty(result.values.text)) {
-                                            if (localResponse) {
-                                                localResponse = false;
-                                                response = result.values.text;
-                                            } else {
-                                                response = response + " \n" + result.values.text;
-                                            }
-                                        }
-
-                                        if (!StringUtils.isEmpty(result.values.url)) {
-                                            if (localResponse) {
-                                                localResponse = false;
-                                                response = result.values.url;
-                                            } else {
-                                                response = response + " \n" + result.values.url;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                } else if(response.equalsIgnoreCase("/list") || response.equalsIgnoreCase("/")) {
+                    if (conversation.getType() == 1 || conversation.getType() == 0) {
+                        response = webhookService.InvokeCommands();
+                    } else {
+                        response = "仅支持群组和私聊";
                     }
+                } else if(webhookService.handleInvokeCommand(response, messageData.getSender(), messageData.getConv())) {
+                    return "ok";
+                } else {
+                    response = tulingService.handleWord(messageData.getSender(), response);
                 }
             } else if (messageData.getPayload().getType() == 3) {
                 localResponse = false;
@@ -160,7 +137,7 @@ public class ServiceImpl implements Service {
                 }
             } else if(messageData.getPayload().getType() > 400 && messageData.getPayload().getType() < 500) {
                 //voip signal message, ignore it
-                return RestResult.ok();
+                return "ok";
             }
 
             if(localResponse) {
@@ -218,6 +195,6 @@ public class ServiceImpl implements Service {
                 LOG.error("Send response execption");
             }
         }
-        return RestResult.ok();
+        return "ok";
     }
 }

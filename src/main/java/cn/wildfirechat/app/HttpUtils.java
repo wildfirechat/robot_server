@@ -28,7 +28,6 @@ public class HttpUtils {
         try {
             HttpClient httpClient = HttpClientBuilder.create().build();
 
-
             post = new HttpPost(url);
             post.setHeader("Content-type", "application/json; charset=utf-8");
             post.setHeader("Connection", "Keep-Alive");
