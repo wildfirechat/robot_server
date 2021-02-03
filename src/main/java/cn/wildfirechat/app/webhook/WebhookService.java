@@ -60,9 +60,9 @@ public class WebhookService {
         IWebhook general = new GeneralWebhook();
         IWebhook gitee = new GiteeWebhook();
 
+        webhookMap.put(general.invokeCommand(), general);
         webhookMap.put(github.invokeCommand(), github);
         webhookMap.put(gitlab.invokeCommand(), gitlab);
-        webhookMap.put(general.invokeCommand(), general);
         webhookMap.put(gitee.invokeCommand(), gitee);
     }
 
