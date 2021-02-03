@@ -3,6 +3,7 @@ package cn.wildfirechat.app.webhook;
 import cn.wildfirechat.app.RobotConfig;
 import cn.wildfirechat.app.TokenUtils;
 import cn.wildfirechat.app.webhook.general.GeneralWebhook;
+import cn.wildfirechat.app.webhook.gitee.GiteeWebhook;
 import cn.wildfirechat.app.webhook.github.GithubWebhook;
 import cn.wildfirechat.app.webhook.gitlab.GitLabWebhook;
 import cn.wildfirechat.common.ErrorCode;
@@ -57,10 +58,12 @@ public class WebhookService {
         IWebhook github = new GithubWebhook();
         IWebhook gitlab = new GitLabWebhook();
         IWebhook general = new GeneralWebhook();
+        IWebhook gitee = new GiteeWebhook();
 
         webhookMap.put(github.invokeCommand(), github);
         webhookMap.put(gitlab.invokeCommand(), gitlab);
         webhookMap.put(general.invokeCommand(), general);
+        webhookMap.put(gitee.invokeCommand(), gitee);
     }
 
     public String InvokeCommands() {
