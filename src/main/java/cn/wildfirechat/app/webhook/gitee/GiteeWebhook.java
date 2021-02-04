@@ -60,11 +60,11 @@ public class GiteeWebhook implements IWebhook {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            callback.sendMessage("糟糕，处理github事件出错了：" + e.getMessage());
+            callback.sendMessage("糟糕，处理gitee事件出错了：" + e.getMessage());
         }
 
         if (message == null) {
-            callback.sendMessage("你收到了一个github事件：" + event);
+            callback.sendMessage("你收到了一个gitee事件：" + event);
             callback.sendMessage(githubPayload);
         } else {
             callback.sendMessage(message);
