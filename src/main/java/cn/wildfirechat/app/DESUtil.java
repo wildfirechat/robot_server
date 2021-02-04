@@ -68,7 +68,7 @@ public class DESUtil {
             //JDK1.8及以上可直接使用Base64，JDK1.7及以下可以使用BASE64Encoder
             //Android平台可以使用android.util.Base64
             String s = new String(Base64.getEncoder().encode(bytes));
-            s = s.replace("/", "-").replace("+","_").replace("=","~");
+            s = s.replace("/", "%2F").replace("+","%2B").replace("=","%3D");
             return s;
         } catch (Exception e) {
             e.printStackTrace();
@@ -83,13 +83,10 @@ public class DESUtil {
      * @return 解密后内容
      */
     public static String decrypt(String data) {
-        if (password== null || password.length() < 8) {
-            throw new RuntimeException("加密失败，key不能小于8位");
-        }
         if (data == null)
             return null;
         try {
-            data = data.replace("-", "/").replace("_", "+").replace("~", "=");
+            data = data.replace("%2F", "/").replace("%2B", "+").replace("%3D", "=");
             Key secretKey = generateKey(password);
             Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM);
             IvParameterSpec iv = new IvParameterSpec(IV_PARAMETER.getBytes(CHARSET));
