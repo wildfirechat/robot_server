@@ -68,7 +68,7 @@ public class DESUtil {
             //JDK1.8及以上可直接使用Base64，JDK1.7及以下可以使用BASE64Encoder
             //Android平台可以使用android.util.Base64
             String s = new String(Base64.getEncoder().encode(bytes));
-            s = s.replace("/", "%2F").replace("+","%2B").replace("=","%3D");
+            s = s.replace("/", "~").replace("+","-").replace("=","_");
             return s;
         } catch (Exception e) {
             e.printStackTrace();
@@ -86,7 +86,7 @@ public class DESUtil {
         if (data == null)
             return null;
         try {
-            data = data.replace("%2F", "/").replace("%2B", "+").replace("%3D", "=");
+            data = data.replace("~", "/").replace("-", "+").replace("_", "=");
             Key secretKey = generateKey(password);
             Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM);
             IvParameterSpec iv = new IvParameterSpec(IV_PARAMETER.getBytes(CHARSET));
