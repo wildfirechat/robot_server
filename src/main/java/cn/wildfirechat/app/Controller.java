@@ -16,8 +16,9 @@ public class Controller {
     private WebhookService webhookService;
 
     @PostMapping(value = "/robot/recvmsg", produces = "application/json;charset=UTF-8"   )
-    public Object sendCode(@RequestBody SendMessageData messageData) {
-        return mService.onReceiveMessage(messageData);
+    public Object recvMsg(@RequestBody SendMessageData messageData) {
+        mService.onReceiveMessage(messageData);
+        return "ok";
     }
 
 

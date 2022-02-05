@@ -13,6 +13,7 @@ import com.google.gson.Gson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.util.StringUtils;
 import sun.misc.BASE64Encoder;
 
@@ -43,7 +44,8 @@ public class ServiceImpl implements Service {
 //    int ConversationType_Channel = 3;
 //    int ConversationType_Thing = 4;
     @Override
-    public Object onReceiveMessage(SendMessageData messageData) {
+    @Async("asyncExecutor")
+    public void onReceiveMessage(SendMessageData messageData) {
         LOG.info("on receive message {}", new Gson().toJson(messageData));
         boolean needResponse = false;
         if (messageData.getConv().getType() == 0) {
@@ -105,7 +107,7 @@ public class ServiceImpl implements Service {
                         response = "仅支持群组和私聊";
                     }
                 } else if(webhookService.handleInvokeCommand(response, messageData.getSender(), messageData.getConv())) {
-                    return "ok";
+                    return;
                 } else {
                     response = tulingService.handleWord(messageData.getSender(), response);
                 }
@@ -137,7 +139,7 @@ public class ServiceImpl implements Service {
                 }
             } else if(messageData.getPayload().getType() > 400 && messageData.getPayload().getType() < 500) {
                 //voip signal message, ignore it
-                return "ok";
+                return;
             }
 
             if(localResponse) {
@@ -195,6 +197,6 @@ public class ServiceImpl implements Service {
                 LOG.error("Send response execption");
             }
         }
-        return "ok";
+        return;
     }
 }
