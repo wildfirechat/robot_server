@@ -85,9 +85,9 @@ public class ServiceImpl implements Service {
             response = response.replace("@" + mRobotConfig.im_name, "").trim();
             LOG.info("msg:{}, robotName:{}", response, mRobotConfig.im_name);
             if (messageData.getPayload().getType() == 1) {
-                if(response.contains("地址") || response.contains("文档") || response.contains("论坛")) {
+                if(response.contains("地址") || response.contains("文档") || response.contains("论坛") || response.contains("官网")) {
                     localResponse = false;
-                    response = "项目地址在: https://github.com/wildfirechat。 文档地址在: http://docs.wildfirechat.cn。论坛地址在: http://bbs.wildfirechat.cn";
+                    response = "项目地址在: https://github.com/wildfirechat。 文档地址在: https://docs.wildfirechat.cn。论坛地址在: https://bbs.wildfirechat.cn。官网地址在：https://wildfirechat.cn";
                 } else if(response.startsWith("公众号")) {
                     localResponse = false;
                     response = "请关注微信公众号：野火IM";
