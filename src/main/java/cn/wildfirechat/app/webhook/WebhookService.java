@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import javax.servlet.http.HttpServletRequest;
+import javax.validation.Payload;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -101,8 +102,8 @@ public class WebhookService {
         return false;
     }
 
-    public Object handleWebhookPost(HttpServletRequest request, String app, String token, String payload) {
-        LOG.info("receive callback {}, {}, {}", app, token, payload);
+    public Object handleWebhookPost(HttpServletRequest request, String app, String token, String body) {
+        LOG.info("receive callback {}, {}, {}", app, token, body);
         if(webhookMap.containsKey(app)) {
             IWebhook webhook = webhookMap.get(app);
             String user = TokenUtils.userFromToken(token);
@@ -124,19 +125,15 @@ public class WebhookService {
                     userNameCache.remove(user);
                 }
 
-                return webhook.handleWebhookPost(request, payload, text -> {
-                    text = text + "\n\nFrom " + namePair.getKey();
-                    sendMessage(conversation, text);
+                return webhook.handleWebhookPost(request, namePair.getKey(), body, payload -> {
+                    sendMessage(conversation, payload);
                 });
             }
         }
         return "ok";
     }
 
-    private void sendMessage(Conversation conversation, String text) {
-        MessagePayload payload = new MessagePayload();
-        payload.setType(1);
-        payload.setSearchableContent(text);
+    private void sendMessage(Conversation conversation, MessagePayload payload) {
         IMResult<SendMessageResult> result = null;
         try {
             result = RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
@@ -153,5 +150,12 @@ public class WebhookService {
         } else {
             LOG.error("Send response error");
         }
+    }
+
+    private void sendMessage(Conversation conversation, String text) {
+        MessagePayload payload = new MessagePayload();
+        payload.setType(1);
+        payload.setSearchableContent(text);
+        sendMessage(conversation, payload);
     }
 }

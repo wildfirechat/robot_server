@@ -2,6 +2,7 @@ package cn.wildfirechat.app.webhook.gitlab;
 
 import cn.wildfirechat.app.webhook.IWebhook;
 import cn.wildfirechat.app.webhook.gitlab.pojo.*;
+import cn.wildfirechat.pojos.MessagePayload;
 import com.google.gson.Gson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,11 +17,14 @@ public class GitLabWebhook implements IWebhook {
     }
 
     @Override
-    public Object handleWebhookPost(HttpServletRequest request, String payload, SendMessageCallback callback) {
+    public Object handleWebhookPost(HttpServletRequest request, String user, String payload, SendMessageCallback callback) {
         String event = request.getHeader("X-Gitlab-Event");
         LOG.info("on receive message {}, event {}", payload, event);
 
         String message = null;
+
+        MessagePayload messagePayload = new MessagePayload();
+        messagePayload.setType(1);
 
         //https://gitee.com/help/articles/4271#article-header0
         try {
@@ -73,14 +77,18 @@ public class GitLabWebhook implements IWebhook {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            callback.sendMessage("糟糕，处理gitlab事件出错了：" + e.getMessage());
+            messagePayload.setSearchableContent("糟糕，处理gitlab事件出错了：" + e.getMessage());
+            callback.sendMessage(messagePayload);
         }
 
         if (message == null) {
-            callback.sendMessage("你收到了一个gitlab事件：" + event);
-            callback.sendMessage(payload);
+            messagePayload.setSearchableContent("你收到了一个gitlab事件：" + event);
+            callback.sendMessage(messagePayload);
+            messagePayload.setSearchableContent(payload);
+            callback.sendMessage(messagePayload);
         } else {
-            callback.sendMessage(message);
+            messagePayload.setSearchableContent(message);
+            callback.sendMessage(messagePayload);
         }
         return "ok";
     }

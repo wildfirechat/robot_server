@@ -2,6 +2,7 @@ package cn.wildfirechat.app.webhook.github;
 
 import cn.wildfirechat.app.webhook.IWebhook;
 import cn.wildfirechat.app.webhook.github.pojo.*;
+import cn.wildfirechat.pojos.MessagePayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,12 +16,14 @@ public class GithubWebhook implements IWebhook {
     }
 
     @Override
-    public Object handleWebhookPost(HttpServletRequest request, String githubPayload, SendMessageCallback callback) {
+    public Object handleWebhookPost(HttpServletRequest request, String user, String githubPayload, SendMessageCallback callback) {
         String event = request.getHeader("X-GitHub-Event");
         LOG.info("on receive message {}", githubPayload);
 
         String message = null;
 
+        MessagePayload messagePayload = new MessagePayload();
+        messagePayload.setType(1);
         try {
             if (event.equals("push")) {
                 PushEvent pushEvent = PushEvent.fromJson(githubPayload);
@@ -73,14 +76,18 @@ public class GithubWebhook implements IWebhook {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            callback.sendMessage("糟糕，处理github事件出错了：" + e.getMessage());
+            messagePayload.setSearchableContent("糟糕，处理github事件出错了：" + e.getMessage());
+            callback.sendMessage(messagePayload);
         }
 
         if (message == null) {
-            callback.sendMessage("你收到了一个github事件：" + event);
-            callback.sendMessage(githubPayload);
+            messagePayload.setSearchableContent("你收到了一个github事件：" + event);
+            callback.sendMessage(messagePayload);
+            messagePayload.setSearchableContent(githubPayload);
+            callback.sendMessage(messagePayload);
         } else {
-            callback.sendMessage(message);
+            messagePayload.setSearchableContent(message);
+            callback.sendMessage(messagePayload);
         }
         return "ok";
     }

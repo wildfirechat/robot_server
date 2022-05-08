@@ -2,6 +2,7 @@ package cn.wildfirechat.app.webhook.gitee;
 
 import cn.wildfirechat.app.webhook.IWebhook;
 import cn.wildfirechat.app.webhook.gitee.pojo.*;
+import cn.wildfirechat.pojos.MessagePayload;
 import com.google.gson.Gson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,13 +17,15 @@ public class GiteeWebhook implements IWebhook {
     }
 
     @Override
-    public Object handleWebhookPost(HttpServletRequest request, String githubPayload, SendMessageCallback callback) {
+    public Object handleWebhookPost(HttpServletRequest request, String user, String githubPayload, SendMessageCallback callback) {
         String event = request.getHeader("X-Gitee-Event");
         LOG.info("on receive message {}, event {}", githubPayload, event);
 
         String message = null;
 
         //https://gitee.com/help/articles/4271#article-header0
+        MessagePayload messagePayload = new MessagePayload();
+        messagePayload.setType(1);
         try {
             if (event.equals("Push Hook")) {
                 PushOrTagHook pushOrTagHook = new Gson().fromJson(githubPayload, PushOrTagHook.class);
@@ -60,14 +63,19 @@ public class GiteeWebhook implements IWebhook {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            callback.sendMessage("糟糕，处理gitee事件出错了：" + e.getMessage());
+            messagePayload.setSearchableContent("糟糕，处理gitee事件出错了：" + e.getMessage());
+            callback.sendMessage(messagePayload);
         }
 
         if (message == null) {
-            callback.sendMessage("你收到了一个gitee事件：" + event);
-            callback.sendMessage(githubPayload);
+            messagePayload.setSearchableContent("你收到了一个gitee事件：" + event);
+            callback.sendMessage(messagePayload);
+
+            messagePayload.setSearchableContent(githubPayload);
+            callback.sendMessage(messagePayload);
         } else {
-            callback.sendMessage(message);
+            messagePayload.setSearchableContent(message);
+            callback.sendMessage(messagePayload);
         }
         return "ok";
     }
