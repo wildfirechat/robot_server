@@ -103,7 +103,7 @@ public class WebhookService {
     }
 
     public Object handleWebhookPost(HttpServletRequest request, String app, String token, String body) {
-        LOG.info("receive callback {}, {}, {}", app, token, body);
+        LOG.info("receive callback {}", app);
         if(webhookMap.containsKey(app)) {
             IWebhook webhook = webhookMap.get(app);
             String user = TokenUtils.userFromToken(token);

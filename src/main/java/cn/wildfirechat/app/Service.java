@@ -1,8 +1,9 @@
 package cn.wildfirechat.app;
 
 
+import cn.wildfirechat.pojos.OutputMessageData;
 import cn.wildfirechat.pojos.SendMessageData;
 
 public interface Service {
-    void onReceiveMessage(SendMessageData messageData);
+    void onReceiveMessage(OutputMessageData messageData);
 }

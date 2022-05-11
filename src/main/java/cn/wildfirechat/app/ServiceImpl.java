@@ -45,8 +45,8 @@ public class ServiceImpl implements Service {
 //    int ConversationType_Thing = 4;
     @Override
     @Async("asyncExecutor")
-    public void onReceiveMessage(SendMessageData messageData) {
-        LOG.info("on receive message {}", new Gson().toJson(messageData));
+    public void onReceiveMessage(OutputMessageData messageData) {
+        LOG.info("on receive message {}", messageData.getMessageId());
         boolean needResponse = false;
         if (messageData.getConv().getType() == 0) {
             needResponse = true;
