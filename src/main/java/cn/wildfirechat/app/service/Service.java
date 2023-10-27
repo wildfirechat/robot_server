@@ -1,4 +1,4 @@
-package cn.wildfirechat.app;
+package cn.wildfirechat.app.service;
 
 
 import cn.wildfirechat.pojos.OutputMessageData;
