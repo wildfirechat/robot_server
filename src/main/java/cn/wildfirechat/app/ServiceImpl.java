@@ -1,24 +1,23 @@
 package cn.wildfirechat.app;
 
-
-import cn.wildfirechat.app.tuling.TulingResponse;
 import cn.wildfirechat.app.tuling.TulingService;
 import cn.wildfirechat.app.webhook.WebhookService;
 import cn.wildfirechat.common.ErrorCode;
+import cn.wildfirechat.messagecontentbuilder.StreamingTextMessageContentBuilder;
 import cn.wildfirechat.pojos.*;
-import cn.wildfirechat.sdk.ChatConfig;
+import cn.wildfirechat.proto.ProtoConstants;
+import cn.wildfirechat.sdk.MessageAdmin;
 import cn.wildfirechat.sdk.RobotService;
 import cn.wildfirechat.sdk.model.*;
-import com.google.gson.Gson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.util.StringUtils;
 import sun.misc.BASE64Encoder;
 
 import javax.annotation.PostConstruct;
 import java.util.Arrays;
+import java.util.UUID;
 
 @org.springframework.stereotype.Service
 public class ServiceImpl implements Service {
@@ -33,9 +32,11 @@ public class ServiceImpl implements Service {
     @Autowired
     private TulingService tulingService;
 
+    private RobotService robotService;
+
     @PostConstruct
     private void init() {
-        ChatConfig.initRobot(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
+        robotService = new RobotService(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
     }
 
 //    int ConversationType_Private = 0;
@@ -106,6 +107,9 @@ public class ServiceImpl implements Service {
                     } else {
                         response = "仅支持群组和私聊";
                     }
+                } else if(response.equals("流式文本")) {
+                    testStreamingText(conversation);
+                    return;
                 } else if(webhookService.handleInvokeCommand(response, messageData.getSender(), messageData.getConv())) {
                     return;
                 } else {
@@ -133,7 +137,7 @@ public class ServiceImpl implements Service {
                 String reason = "{\"r\":5}";
                 payload.setBase64edData(new BASE64Encoder().encode(reason.getBytes()));
                 try {
-                    RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                    robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -168,7 +172,7 @@ public class ServiceImpl implements Service {
             if (conversation.getType() == 1 && messageData.getPayload().getType() == 1) { //群里的文本，加上@信息
                 InputOutputUserInfo sender = null;
                 try {
-                    IMResult<InputOutputUserInfo> result = RobotService.getUserInfo(messageData.getSender());
+                    IMResult<InputOutputUserInfo> result = robotService.getUserInfo(messageData.getSender());
                     if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         sender = result.getResult();
                     }
@@ -182,7 +186,7 @@ public class ServiceImpl implements Service {
                 }
             }
             try {
-                IMResult<SendMessageResult> result = RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                IMResult<SendMessageResult> result = robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 if (result != null) {
                     if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         LOG.info("Send response success");
@@ -198,5 +202,41 @@ public class ServiceImpl implements Service {
             }
         }
         return;
+    }
+
+
+    void testStreamingText(Conversation conversation) {
+        String fullText = "北京野火无限网络科技有限公司是成立于2019年底的一家科技创新企业，公司的主要目标是为广大企业和单位提供优质可控、私有部署的即时通讯和实时音视频能力，为社会信息化水平提高作出自己的贡献。\n" +
+                "\n" +
+                "野火IM是公司研发一套自主可控的即时通讯组件，具有全部私有化、功能齐全、协议稳定可靠、全平台支持、安全性高和支持国产化等技术特点。客户端分层设计，既可开箱即用，也可与现有系统深度融合。具有完善的服务端API和自定义消息功能，可以任意扩展功能。代码开源率高，方便二次开发和使用。支持多人实时音视频和会议功能，线上沟通更通畅。\n" +
+                "\n" +
+                "公司致力于开源项目，在Github上开源项目广受好评，其中Server项目有超过7.1K个Star，组织合计Star超过1万个。有大量的技术公司受益于我们的开源，为自己的产品添加了即时通讯能力，这也算是我们公司为社会信息化建设做出的一点点贡献吧。\n" +
+                "\n" +
+                "公司以即时通讯技术为核心，持续努力优化和完善即时通讯和实时音视频产品，努力为客户提供最优质的即时通讯和实时音视频能力。";
+        int i = 0;
+        String streamId = UUID.randomUUID().toString();
+        while (i < fullText.length()) {
+            i+= 15;
+
+            boolean finish = i >= fullText.length();
+            String partText = finish?fullText:fullText.substring(0, i);
+
+            MessagePayload payload = StreamingTextMessageContentBuilder.newBuilder(streamId).text(partText).generating(!finish).build();
+
+            try {
+                IMResult<SendMessageResult> resultSendMessage = robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                if (resultSendMessage != null && resultSendMessage.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
+                    System.out.println("send message success");
+                } else {
+                    System.out.println("send message failure");
+                    return;
+                }
+
+                Thread.sleep(500);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return;
+            }
+        }
     }
 }

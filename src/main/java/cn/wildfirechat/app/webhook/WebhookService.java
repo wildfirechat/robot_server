@@ -52,6 +52,9 @@ public class WebhookService {
 
     private Map<String, Pair> userNameCache = new ConcurrentHashMap<>();
 
+
+    private RobotService robotService;
+
     @PostConstruct
     void init() {
         webhookMap = new HashMap<>();
@@ -65,6 +68,8 @@ public class WebhookService {
         webhookMap.put(github.invokeCommand(), github);
         webhookMap.put(gitlab.invokeCommand(), gitlab);
         webhookMap.put(gitee.invokeCommand(), gitee);
+
+        robotService = new RobotService(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
     }
 
     public String InvokeCommands() {
@@ -112,7 +117,7 @@ public class WebhookService {
             if(user != null) {
                 Pair namePair = userNameCache.computeIfAbsent(user, s -> {
                     try {
-                        IMResult<InputOutputUserInfo> inputOutputUserInfo = RobotService.getUserInfo(s);
+                        IMResult<InputOutputUserInfo> inputOutputUserInfo = robotService.getUserInfo(s);
                         if(inputOutputUserInfo != null && inputOutputUserInfo.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS && inputOutputUserInfo.getResult() != null) {
                             return new Pair(inputOutputUserInfo.getResult().getDisplayName(), System.currentTimeMillis());
                         }
@@ -136,7 +141,7 @@ public class WebhookService {
     private void sendMessage(Conversation conversation, MessagePayload payload) {
         IMResult<SendMessageResult> result = null;
         try {
-            result = RobotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+            result = robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
         } catch (Exception e) {
             e.printStackTrace();
         }
