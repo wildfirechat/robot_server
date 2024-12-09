@@ -22,7 +22,8 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<java.version>1.8</java.version>
-		<wfc.sdk.version>1.2.1</wfc.sdk.version>
+		<wfc.sdk.version>1.1.2</wfc.sdk.version>
+		<wfc.avsdk.version>1.2.2</wfc.avsdk.version>
 		<netty.version>4.1.12.Final</netty.version>
 		<log4j2.version>2.17.1</log4j2.version>
 	</properties>
@@ -131,11 +132,49 @@
 		</dependency>
 
 		<dependency>
+			<groupId>cn.wildfirechat</groupId>
+			<artifactId>avenginekit</artifactId>
+			<version>${wfc.avsdk.version}</version>
+			<scope>system</scope>
+			<systemPath>${project.basedir}/src/lib/avenginekit-1.2.2.jar</systemPath>
+		</dependency>
+
+		<dependency>
 			<groupId>io.netty</groupId>
 			<artifactId>netty-common</artifactId>
 			<version>${netty.version}</version>
 		</dependency>
 
+<!--    使用这个命令打包某个平台架构的包 mvn -Djavacpp.platform=linux-x86_64 package 或 mvn -Djavacpp.platform=macosx-arm64 package  -->
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>javacv-platform</artifactId>
+			<version>1.5.9</version>
+		</dependency>
+
+		<dependency>
+			<groupId>dev.onvoid.webrtc</groupId>
+			<artifactId>webrtc-java</artifactId>
+			<version>0.8.0</version>
+			<scope>system</scope>
+			<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT.jar</systemPath>
+		</dependency>
+
+		<dependency>
+			<groupId>dev.onvoid.webrtc</groupId>
+			<artifactId>webrtc-java-linux-x86_64</artifactId>
+			<version>0.1.0</version>
+			<scope>system</scope>
+			<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-linux-x86_64.jar</systemPath>
+		</dependency>
+
+		<dependency>
+			<groupId>dev.onvoid.webrtc</groupId>
+			<artifactId>webrtc-java-macos-aarch64</artifactId>
+			<version>0.1.0</version>
+			<scope>system</scope>
+			<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-macos-aarch64.jar</systemPath>
+		</dependency>
 	</dependencies>
 
 	<build>

@@ -6,4 +6,5 @@ import cn.wildfirechat.pojos.SendMessageData;
 
 public interface Service {
     void onReceiveMessage(OutputMessageData messageData);
+    void onReceiveConferenceEvent(String event);
 }

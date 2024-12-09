@@ -2,8 +2,10 @@
 作为野火IM机器人应用的演示，本工程仅演示机器人应用的接口。其中用到图灵的免费版。
 
 #### 编译
+需要分平台打包，只支持linux x64和mac arm64平台，分别如下
 ```
-mvn package
+mvn -Djavacpp.platform=linux-x86_64 -Dmaven.test.skip=true package 
+mvn -Djavacpp.platform=macosx-arm64 -Dmaven.test.skip=true package 
 ```
 
 #### 图灵

@@ -22,6 +22,11 @@ public class Controller {
         return "ok";
     }
 
+    @PostMapping(value = "/robot/recvmsg/conference", produces = "application/json;charset=UTF-8"   )
+    public Object recvConferenceEvent(@RequestBody String event) {
+        mService.onReceiveConferenceEvent(event);
+        return "ok";
+    }
 
     @PostMapping(value = "/robot/webhook/{app}/{token}", produces = "application/json;charset=UTF-8"   )
     public Object webhook(HttpServletRequest request, @PathVariable("app") String app, @PathVariable("token") String token, @RequestBody String payload) {

@@ -1,22 +1,22 @@
 package cn.wildfirechat.app;
 
+import cn.wildfirechat.app.call.CallService;
 import cn.wildfirechat.app.tuling.TulingService;
 import cn.wildfirechat.app.webhook.WebhookService;
 import cn.wildfirechat.common.ErrorCode;
 import cn.wildfirechat.messagecontentbuilder.StreamingTextMessageContentBuilder;
 import cn.wildfirechat.pojos.*;
 import cn.wildfirechat.proto.ProtoConstants;
-import cn.wildfirechat.sdk.MessageAdmin;
 import cn.wildfirechat.sdk.RobotService;
 import cn.wildfirechat.sdk.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
-import sun.misc.BASE64Encoder;
 
 import javax.annotation.PostConstruct;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.UUID;
 
 @org.springframework.stereotype.Service
@@ -34,6 +34,9 @@ public class ServiceImpl implements Service {
 
     private RobotService robotService;
 
+    @Autowired
+    private CallService callService;
+
     @PostConstruct
     private void init() {
         robotService = new RobotService(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
@@ -48,6 +51,49 @@ public class ServiceImpl implements Service {
     @Async("asyncExecutor")
     public void onReceiveMessage(OutputMessageData messageData) {
         LOG.info("on receive message {}", messageData.getMessageId());
+
+        if(messageData.getPayload().getType() >= 400 && messageData.getPayload().getType() <= 420) {
+            callService.onReceiveCallMessage(messageData);
+            return;
+        }
+
+        if(messageData.getPayload().getType() == 1
+                && ("给我打电话".equals(messageData.getPayload().getSearchableContent()) || "给我打个电话".equals(messageData.getPayload().getSearchableContent()) || "call me".equalsIgnoreCase(messageData.getPayload().getSearchableContent()))
+                && (messageData.getConv().getType() == ProtoConstants.ConversationType.ConversationType_Private || messageData.getConv().getType() == ProtoConstants.ConversationType.ConversationType_Group)) {
+            if(messageData.getConv().getType() == ProtoConstants.ConversationType.ConversationType_Private) {
+                //单聊的target为对方id，收到的消息需要设置一下target。
+                messageData.getConv().setTarget(messageData.getSender());
+            }
+
+            if(callService.hasPreferEngine(messageData.getSender())) {
+                if(messageData.getConv().getType() == ProtoConstants.ConversationType.ConversationType_Private) {
+                    callService.startPrivateCall(messageData.getConv(), false, callService.isAdvanceEngine(messageData.getSender()));
+                } else {
+                    callService.startGroupCall(messageData.getConv(), Arrays.asList(messageData.getSender()), false, callService.isAdvanceEngine(messageData.getSender()));
+                }
+            } else {
+                MessagePayload payload = new MessagePayload();
+                payload.setType(1);
+                payload.setSearchableContent("请先给我打个电话，以后我才能给您电话");
+                try {
+                    IMResult<SendMessageResult> result = robotService.sendMessage(mRobotConfig.getIm_id(), messageData.getConv(), payload);
+                    if (result != null) {
+                        if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
+                            LOG.info("Send response success");
+                        } else {
+                            LOG.error("Send response error {}", result.getCode());
+                        }
+                    } else {
+                        LOG.error("Send response is null");
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    LOG.error("Send response execption");
+                }
+            }
+            return;
+        }
+
         boolean needResponse = false;
         if (messageData.getConv().getType() == 0) {
             needResponse = true;
@@ -135,7 +181,7 @@ public class ServiceImpl implements Service {
                 payload.setType(402);
                 payload.setContent(messageData.getPayload().getContent());
                 String reason = "{\"r\":5}";
-                payload.setBase64edData(new BASE64Encoder().encode(reason.getBytes()));
+                payload.setBase64edData(Base64.getEncoder().encodeToString(reason.getBytes()));
                 try {
                     robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 } catch (Exception e) {
@@ -144,6 +190,11 @@ public class ServiceImpl implements Service {
             } else if(messageData.getPayload().getType() > 400 && messageData.getPayload().getType() < 500) {
                 //voip signal message, ignore it
                 return;
+            } else if((messageData.getPayload().getPersistFlag() & 0X2) == 0) {
+                //not count message, ignore it
+                return;
+            } else {
+                LOG.info("Unknown message type {}", messageData.getPayload().getType());
             }
 
             if(localResponse) {
@@ -204,6 +255,10 @@ public class ServiceImpl implements Service {
         return;
     }
 
+    @Override
+    public void onReceiveConferenceEvent(String event) {
+        callService.onConferenceEvent(event);
+    }
 
     void testStreamingText(Conversation conversation) {
         String fullText = "北京野火无限网络科技有限公司是成立于2019年底的一家科技创新企业，公司的主要目标是为广大企业和单位提供优质可控、私有部署的即时通讯和实时音视频能力，为社会信息化水平提高作出自己的贡献。\n" +
