@@ -94,6 +94,13 @@ public class CallService {
                     }
                 });
 
+                // for rtsp
+//                RtspCapturer capturer =  RtspCapturer.createAndProbe("rtsp://192.168.2.186:8554/live/stream1");
+//                callSession.setAudioDevice(capturer);
+//                if(!callSession.isAudioOnly()) {
+//                    callSession.setVideoCapture(capturer);
+//                }
+
                 callSession.setAudioDevice(new EchoAudioDevice(callSession.getConversation()));
                 if(!callSession.isAudioOnly()) {
                     callSession.setVideoCapture(new FileVideoCapture(videoFilePath, callSession.getConversation(), callSession.getCallId()));
