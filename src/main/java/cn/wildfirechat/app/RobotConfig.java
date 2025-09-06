@@ -12,12 +12,21 @@ public class RobotConfig {
     public String im_secret;
     public String im_id;
     public String im_name;
+    public boolean support_reply;
 
     public boolean use_tuling;
 
     public String tuling_key;
 
     public String public_addr;
+
+    public boolean isSupport_reply() {
+        return support_reply;
+    }
+
+    public void setSupport_reply(boolean support_reply) {
+        this.support_reply = support_reply;
+    }
 
     public boolean isUse_tuling() {
         return use_tuling;
