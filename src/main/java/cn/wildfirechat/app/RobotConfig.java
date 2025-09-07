@@ -13,27 +13,7 @@ public class RobotConfig {
     public String im_id;
     public String im_name;
 
-    public boolean use_tuling;
-
-    public String tuling_key;
-
     public String public_addr;
-
-    public boolean isUse_tuling() {
-        return use_tuling;
-    }
-
-    public void setUse_tuling(boolean use_tuling) {
-        this.use_tuling = use_tuling;
-    }
-
-    public String getTuling_key() {
-        return tuling_key;
-    }
-
-    public void setTuling_key(String tuling_key) {
-        this.tuling_key = tuling_key;
-    }
 
     public String getIm_name() {
         return im_name;
