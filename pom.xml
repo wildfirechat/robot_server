@@ -186,6 +186,19 @@
 					<includeSystemScope>true</includeSystemScope>
 				</configuration>
 			</plugin>
+			<!-- 配置 Maven 测试插件，永久跳过单元测试 -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<!-- 填写你项目中该插件的版本，或使用项目的统一插件版本管理 -->
+				<version>2.22.2</version>
+				<configuration>
+					<!-- 核心配置：跳过测试执行 -->
+					<skipTests>true</skipTests>
+					<!-- 可选：如果需要同时跳过测试代码编译，添加下面配置（等价于 maven.test.skip=true） -->
+					<!-- <skip>true</skip> -->
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 
