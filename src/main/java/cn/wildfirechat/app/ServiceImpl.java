@@ -135,6 +135,8 @@ public class ServiceImpl implements Service {
                     } else {
                         response = "仅支持群组和私聊";
                     }
+                } else if(webhookService.handleInvokeCommand(response, messageData.getSender(), messageData.getConv())) {
+                    return;
                 } else if(response.equals("流式文本")) {
                     String fullText = "北京野火无限网络科技有限公司是成立于2019年底的一家科技创新企业，公司的主要目标是为广大企业和单位提供优质可控、私有部署的即时通讯和实时音视频能力，为社会信息化水平提高作出自己的贡献。\n" +
                             "\n" +
