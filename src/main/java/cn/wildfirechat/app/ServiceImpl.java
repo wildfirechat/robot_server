@@ -363,11 +363,7 @@ public class ServiceImpl implements Service {
                 MessagePayload payload = StreamingTextMessageContentBuilder.newBuilder(streamId).text(partText).generating(!finish).build();
                 try {
                     IMResult<SendMessageResult> resultSendMessage;
-                    if(messageUid > 0 && mRobotConfig.isSupport_reply()) {
-                        resultSendMessage = robotService.replyMessage(messageUid, payload, false);
-                    } else {
-                        resultSendMessage = robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
-                    }
+                    resultSendMessage = robotService.replyMessage(messageUid, payload, false);
 
                     if (resultSendMessage != null && resultSendMessage.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         System.out.println("send message success");
