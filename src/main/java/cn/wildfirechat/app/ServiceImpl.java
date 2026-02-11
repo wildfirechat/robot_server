@@ -152,7 +152,7 @@ public class ServiceImpl implements Service {
                     if (messageData.getPayload().getMentionedTarget() != null && messageData.getPayload().getMentionedTarget().contains(mRobotConfig.getIm_id())) {
                         testStreamingText(messageData.getMessageId(), conversation, response);
                     } else {
-                        testStreamingText(0, conversation, response);
+                        testStreamingText(messageData.getMessageId(), conversation, response);
                     }
 
                     return;
@@ -363,7 +363,11 @@ public class ServiceImpl implements Service {
                 MessagePayload payload = StreamingTextMessageContentBuilder.newBuilder(streamId).text(partText).generating(!finish).build();
                 try {
                     IMResult<SendMessageResult> resultSendMessage;
-                    resultSendMessage = robotService.replyMessage(messageUid, payload, false);
+                    if(messageUid > 0) {
+                        resultSendMessage = robotService.replyMessage(messageUid, payload, false);
+                    } else {
+                        resultSendMessage = robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                    }
 
                     if (resultSendMessage != null && resultSendMessage.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         System.out.println("send message success");
