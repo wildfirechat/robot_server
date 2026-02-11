@@ -152,7 +152,7 @@ public class ServiceImpl implements Service {
                     if (messageData.getPayload().getMentionedTarget() != null && messageData.getPayload().getMentionedTarget().contains(mRobotConfig.getIm_id())) {
                         testStreamingText(messageData.getMessageId(), conversation, response);
                     } else {
-                        testStreamingText(messageData.getMessageId(), conversation, response);
+                        testStreamingText(0, conversation, response);
                     }
 
                     return;
