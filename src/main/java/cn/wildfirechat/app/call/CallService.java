@@ -129,7 +129,7 @@ public class CallService {
         }
 
         //3. 打开webrtc的日志，一般不用打开，除非出现问题需要debug
-        AVEngineKit.getInstance().enableWebRTCLog();
+        //AVEngineKit.getInstance().enableWebRTCLog();
     }
 
     public boolean hasPreferEngine(String userId) {
