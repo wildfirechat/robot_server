@@ -102,17 +102,115 @@ public class VideoCompositor {
             uBuf.get(yuv, yLen,     uLen);
             vBuf.get(yuv, yLen + uLen, vLen);
 
-            latestFrames.put(userId, new YuvFrame(yuv, w, h));
+            // Apply frame rotation so portrait video appears upright in the browser.
+            // VideoFrame.rotation is one of 0, 90, 180, 270 (degrees clockwise).
+            int rotation = frame.rotation;
+            YuvFrame yuvFrame;
+            if (rotation == 90 || rotation == 270) {
+                byte[] rotated = rotateYuv(yuv, w, h, rotation);
+                // After 90/270° rotation, width and height are swapped
+                yuvFrame = new YuvFrame(rotated, h, w);
+            } else if (rotation == 180) {
+                byte[] rotated = rotateYuv(yuv, w, h, 180);
+                yuvFrame = new YuvFrame(rotated, w, h);
+            } else {
+                yuvFrame = new YuvFrame(yuv, w, h);
+            }
+
+            latestFrames.put(userId, yuvFrame);
         } catch (Exception e) {
             LOG.warn("VideoCompositor: failed to extract YUV from user {}", userId, e);
         } finally {
             // Must always release the I420Buffer to decrement WebRTC's native reference count.
-            // Failing to do so exhausts the native buffer pool and causes
-            // "No decodable frame in 200 ms" / keyframe-request loops.
             if (i420 != null) {
                 i420.release();
             }
         }
+    }
+
+    /**
+     * Rotate a planar YUV420p byte array by the given degrees (90, 180, or 270 clockwise).
+     * Uses nearest-neighbour pixel mapping – fast enough for real-time use.
+     */
+    private static byte[] rotateYuv(byte[] src, int w, int h, int degrees) {
+        int srcYSize  = w * h;
+        int srcUVSize = (w / 2) * (h / 2);
+
+        // Determine output dimensions
+        final int dstW, dstH;
+        if (degrees == 90 || degrees == 270) {
+            dstW = h; dstH = w;
+        } else { // 180
+            dstW = w; dstH = h;
+        }
+
+        int dstYSize  = dstW * dstH;
+        int dstUVSize = (dstW / 2) * (dstH / 2);
+        byte[] dst = new byte[dstYSize + dstUVSize * 2];
+
+        // --- Y plane ---
+        for (int y = 0; y < dstH; y++) {
+            for (int x = 0; x < dstW; x++) {
+                int srcX, srcY;
+                if (degrees == 90) {
+                    srcX = y;
+                    srcY = dstW - 1 - x;
+                } else if (degrees == 270) {
+                    srcX = dstH - 1 - y;
+                    srcY = x;
+                } else { // 180
+                    srcX = w - 1 - x;
+                    srcY = h - 1 - y;
+                }
+                dst[y * dstW + x] = src[srcY * w + srcX];
+            }
+        }
+
+        // --- U plane ---
+        int srcUOff = srcYSize;
+        int dstUOff = dstYSize;
+        int srcW2 = w / 2, srcH2 = h / 2;
+        int dstW2 = dstW / 2, dstH2 = dstH / 2;
+
+        for (int y = 0; y < dstH2; y++) {
+            for (int x = 0; x < dstW2; x++) {
+                int srcX, srcY;
+                if (degrees == 90) {
+                    srcX = y;
+                    srcY = dstW2 - 1 - x;
+                } else if (degrees == 270) {
+                    srcX = dstH2 - 1 - y;
+                    srcY = x;
+                } else { // 180
+                    srcX = srcW2 - 1 - x;
+                    srcY = srcH2 - 1 - y;
+                }
+                dst[dstUOff + y * dstW2 + x] = src[srcUOff + srcY * srcW2 + srcX];
+            }
+        }
+
+        // --- V plane ---
+        int srcVOff = srcYSize + srcUVSize;
+        int dstVOff = dstYSize + dstUVSize;
+
+        for (int y = 0; y < dstH2; y++) {
+            for (int x = 0; x < dstW2; x++) {
+                int srcX, srcY;
+                if (degrees == 90) {
+                    srcX = y;
+                    srcY = dstW2 - 1 - x;
+                } else if (degrees == 270) {
+                    srcX = dstH2 - 1 - y;
+                    srcY = x;
+                } else { // 180
+                    srcX = srcW2 - 1 - x;
+                    srcY = srcH2 - 1 - y;
+                }
+                dst[dstVOff + y * dstW2 + x] = src[srcVOff + srcY * srcW2 + srcX];
+            }
+        }
+
+        return dst;
     }
 
     public void start() {
