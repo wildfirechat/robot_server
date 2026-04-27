@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>通话直播</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #111; color: #eee; font-family: sans-serif; display: flex;
+           flex-direction: column; align-items: center; min-height: 100vh; padding: 24px; }
+    h1 { margin-bottom: 16px; font-size: 1.2rem; color: #aaa; }
+    #url-bar { display: flex; gap: 8px; width: 100%; max-width: 720px; margin-bottom: 16px; }
+    #url-bar input { flex: 1; padding: 8px 12px; border-radius: 6px; border: 1px solid #444;
+                     background: #222; color: #eee; font-size: 0.9rem; }
+    #url-bar button { padding: 8px 18px; border-radius: 6px; border: none;
+                      background: #1a6cf5; color: #fff; cursor: pointer; font-size: 0.9rem; }
+    #url-bar button:hover { background: #1558cc; }
+    video { width: 100%; max-width: 720px; background: #000; border-radius: 8px; }
+    #streams { margin-top: 24px; width: 100%; max-width: 720px; }
+    #streams h2 { font-size: 0.95rem; color: #888; margin-bottom: 8px; }
+    .stream-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+                   background: #1c1c1c; border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
+    .stream-item:hover { background: #252525; }
+    .stream-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; flex-shrink: 0; }
+    .stream-url { font-size: 0.8rem; color: #aaa; word-break: break-all; }
+    #status { margin-top: 10px; font-size: 0.8rem; color: #888; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <h1>HLS 直播播放器</h1>
+
+  <div id="url-bar">
+    <input id="hls-url" type="text" placeholder="输入 HLS 地址，例如 /hls/{callId}/stream.m3u8">
+    <button onclick="loadStream()">播放</button>
+  </div>
+
+  <video id="video" controls autoplay muted></video>
+  <div id="status"></div>
+
+  <div id="streams">
+    <h2>当前活跃直播 <button onclick="refreshStreams()" style="font-size:0.75rem;padding:2px 8px;margin-left:8px;border-radius:4px;border:none;background:#333;color:#aaa;cursor:pointer;">刷新</button></h2>
+    <div id="stream-list"></div>
+  </div>
+
+  <!-- HLS.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+  <script>
+    const video  = document.getElementById('video');
+    const urlInput = document.getElementById('hls-url');
+    const status = document.getElementById('status');
+    let hls = null;
+
+    function loadStream(url) {
+      const src = url || urlInput.value.trim();
+      if (!src) return;
+      urlInput.value = src;
+      status.textContent = '正在连接…';
+
+      if (hls) { hls.destroy(); hls = null; }
+
+      if (Hls.isSupported()) {
+        hls = new Hls({
+          // Low-latency tuning for standard HLS (not LL-HLS)
+          liveSyncDurationCount: 2,       // target buffer = 2 segments (~2 s with 1 s segments)
+          liveMaxLatencyDurationCount: 4, // tolerate up to 4 segments before catching up
+          maxBufferLength: 4,
+          maxMaxBufferLength: 8,
+          lowLatencyMode: false,          // flip to true only if server supports LL-HLS push
+          enableWorker: true,
+        });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          status.textContent = '已连接，开始播放';
+          video.play().catch(() => {});
+        });
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (data.fatal) {
+            status.textContent = '播放错误: ' + data.type + ' / ' + data.details;
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari native HLS
+        video.src = src;
+        video.play().catch(() => {});
+        status.textContent = '已连接（Safari 原生 HLS）';
+      } else {
+        status.textContent = '当前浏览器不支持 HLS 播放';
+      }
+    }
+
+    async function refreshStreams() {
+      try {
+        const res = await fetch('/hls/streams');
+        const data = await res.json();
+        const list = document.getElementById('stream-list');
+        list.innerHTML = '';
+        const entries = Object.entries(data);
+        if (entries.length === 0) {
+          list.innerHTML = '<div style="color:#555;font-size:0.8rem;padding:8px">暂无活跃直播</div>';
+          return;
+        }
+        entries.forEach(([callId, path]) => {
+          const fullUrl = window.location.origin + path;
+          const item = document.createElement('div');
+          item.className = 'stream-item';
+          item.title = '点击播放';
+          item.innerHTML = `<div class="stream-dot"></div>
+            <div><div style="font-size:0.85rem">${callId}</div>
+            <div class="stream-url">${fullUrl}</div></div>`;
+          item.onclick = () => loadStream(path);
+          list.appendChild(item);
+        });
+      } catch(e) {
+        document.getElementById('stream-list').innerHTML =
+          '<div style="color:#c0392b;font-size:0.8rem;padding:8px">获取直播列表失败</div>';
+      }
+    }
+
+    // Auto-load from ?url= query param
+    const params = new URLSearchParams(location.search);
+    if (params.get('url')) loadStream(params.get('url'));
+
+    // Auto-refresh stream list every 5 s
+    refreshStreams();
+    setInterval(refreshStreams, 5000);
+  </script>
+</body>
+</html>
