@@ -2,6 +2,7 @@ package cn.wildfirechat.app.call;
 
 import cn.wildfirechat.*;
 import cn.wildfirechat.app.RobotConfig;
+import cn.wildfirechat.impl.SignalServerImpl;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.OutputMessageData;
 import cn.wildfirechat.sdk.RobotService;
@@ -44,7 +45,7 @@ public class CallService {
         RobotService robotService = new RobotService(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
 
         //1. 初始化音视频SDK
-        AVEngineKit.getInstance().init(robotService, new AVEngineKitCallback() {
+        AVEngineKit.getInstance().init(mRobotConfig.getIm_id(), new SignalServerImpl(robotService), new AVEngineKitCallback() {
             @Override
             public void onReceiveCall(CallSession callSession) {
                 LOG.info("onReceiveCall: {}", callSession.getCallId());
@@ -175,7 +176,7 @@ public class CallService {
             public void onCallEnd(CallSession callSession, CallEndReason endReason) {
 
             }
-        });
+        }, 0, null);
         if(!callSession.isAudioOnly()) {
             callSession.setVideoCapture(new FileVideoCapture(videoFilePath, callSession.getConversation(), callSession.getCallId()));
         }
@@ -212,7 +213,7 @@ public class CallService {
             public void onCallEnd(CallSession callSession, CallEndReason endReason) {
 
             }
-        });
+        }, 0, null);
         if(!callSession.isAudioOnly()) {
             callSession.setVideoCapture(new FileVideoCapture(videoFilePath, callSession.getConversation(), callSession.getCallId()));
         }
