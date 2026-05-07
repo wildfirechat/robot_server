@@ -36,6 +36,12 @@ public class CallService {
     @Value("${video.file.path}")
     private String videoFilePath;
 
+    @Value("${public.ipv4:}")
+    private String publicIpV4;
+
+    @Value("${public.ipv6:}")
+    private String publicIpV6;
+
     private Map<String, ImageVideoSink> imageVideoSinkMap = new HashMap<>();
 
     private final Map<String, Boolean> engineTypeMap = new HashMap<>();
@@ -129,7 +135,10 @@ public class CallService {
             AVEngineKit.getInstance().addIceServer(iceUrl, iceUsername, icePassword);
         }
 
-        //3. 打开webrtc的日志，一般不用打开，除非出现问题需要debug
+        //3. 设置公网IP地址。只有使用免费版音视频且服务拥有公网IP地址时才需要调用。
+        AVEngineKit.getInstance().setPublicIp(publicIpV4, publicIpV6);
+
+        //4. 打开webrtc的日志，一般不用打开，除非出现问题需要debug
         //AVEngineKit.getInstance().enableWebRTCLog();
     }
 
