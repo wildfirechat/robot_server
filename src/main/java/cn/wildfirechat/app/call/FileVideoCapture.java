@@ -23,7 +23,7 @@ import static org.opencv.core.CvType.CV_8UC3;
 
 public class FileVideoCapture implements JavaVideoCapture {
     private static final Logger LOG = LoggerFactory.getLogger(FileVideoCapture.class);
-    private BlockingQueue<byte[]> cacheQueue = new LinkedBlockingQueue<>();
+    private BlockingQueue<byte[]> cacheQueue = new LinkedBlockingQueue<>(100);
     private final String videoFilePath;
     private final Conversation conversation;
     private final String callId;
@@ -43,15 +43,21 @@ public class FileVideoCapture implements JavaVideoCapture {
 
     public VideoCaptureCapability getCapability() {
         if(videoWidth == 0) {
+            FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(new File(videoFilePath));
             try {
-                FFmpegFrameGrabber grabber = new FFmpegFrameGrabber(new File(videoFilePath));
                 grabber.start();
                 videoWidth = grabber.getImageWidth();
                 videoHeight = grabber.getImageHeight();
-                grabber.stop();
-                grabber.release();
             } catch (FFmpegFrameGrabber.Exception e) {
                 e.printStackTrace();
+            } finally {
+                // Always release the grabber, otherwise the native FFmpeg context leaks off-heap
+                try {
+                    grabber.stop();
+                    grabber.release();
+                } catch (FFmpegFrameGrabber.Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
         VideoCaptureCapability captureCapability = new VideoCaptureCapability(videoWidth, videoHeight, FPT);
@@ -99,6 +105,7 @@ public class FileVideoCapture implements JavaVideoCapture {
 
     synchronized private void stopReadFrames() {
         isStoped = true;
+        cacheQueue.clear();
     }
 
     private void startReadFramesFromFile() throws FFmpegFrameGrabber.Exception {
@@ -114,43 +121,56 @@ public class FileVideoCapture implements JavaVideoCapture {
 
                     long startTime = System.currentTimeMillis();
                     // Loop through video frames
-                    Frame frame;
                     while (!isStoped) {
-                        if((frame = grabber.grab()) == null) {
+                        Frame frame = grabber.grab();
+                        if(frame == null) {
                             LOG.info("Restart video grabber({})!!!", callId);
                             grabber.restart();
                             startTime = System.currentTimeMillis();
-                            frame = grabber.grab();
-                        }
-                        if(frame.type == Frame.Type.AUDIO) {
                             continue;
                         }
-                        // Convert Frame to BufferedImage
-                        long now = System.currentTimeMillis() - startTime;
-                        long videoTime = frame.timestamp/1000;
+                        try {
+                            if(frame.type == Frame.Type.AUDIO) {
+                                continue;
+                            }
+                            // Convert Frame to BufferedImage
+                            long now = System.currentTimeMillis() - startTime;
+                            long videoTime = frame.timestamp/1000;
 
-                        if(now - videoTime > 100) {
-                            continue;
+                            if(now - videoTime > 100) {
+                                continue;
+                            }
+
+                            //时间同步
+                            while (videoTime > now && !isStoped) {
+                                Thread.sleep(10);
+                                now = System.currentTimeMillis() - startTime;
+                            }
+
+                            BufferedImage bufferedImage = converter.convert(frame);
+
+                            // Convert BufferedImage to I420 format (YUV420)
+                            byte[] i420Data = convertToI420(bufferedImage);
+                            if (!cacheQueue.offer(i420Data)) {
+                                LOG.warn("Video cache queue full, dropping frame({}).", callId);
+                            }
+                        } finally {
+                            // Frame holds native off-heap buffers; must be released explicitly,
+                            // relying on GC would let off-heap memory grow unboundedly
+                            frame.close();
                         }
-
-                        //时间同步
-                        while (videoTime > now && !isStoped) {
-                            Thread.sleep(10);
-                            now = System.currentTimeMillis() - startTime;
-                        }
-
-                        BufferedImage bufferedImage = converter.convert(frame);
-
-                        // Convert BufferedImage to I420 format (YUV420)
-                        byte[] i420Data = convertToI420(bufferedImage);
-                        cacheQueue.add(i420Data);
                     }
-
-                    grabber.stop();
-                    grabber.release();
-                    grabber = null;
                 } catch (Exception e) {
                     e.printStackTrace();
+                } finally {
+                    // Always release the grabber, even on exception, to free native FFmpeg resources
+                    try {
+                        grabber.stop();
+                        grabber.release();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    grabber = null;
                 }
             }
         });

@@ -17,6 +17,7 @@ import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @org.springframework.stereotype.Service
 public class CallService {
@@ -42,7 +43,8 @@ public class CallService {
     @Value("${public.ipv6:}")
     private String publicIpV6;
 
-    private Map<String, ImageVideoSink> imageVideoSinkMap = new HashMap<>();
+    // ConcurrentHashMap: entries are removed on call end, otherwise the map would grow forever
+    private Map<String, ImageVideoSink> imageVideoSinkMap = new ConcurrentHashMap<>();
 
     private final Map<String, Boolean> engineTypeMap = new HashMap<>();
 
@@ -79,10 +81,13 @@ public class CallService {
                     @Override
                     public void onReceiveRemoteVideoTrack(CallSession callSession, String userId, VideoTrack videoTrack) {
                         String key = userId + "_" + callSession.getCallId();
-                        if(!imageVideoSinkMap.containsKey(key)) {
-                            ImageVideoSink imageVideoSink = new ImageVideoSink(userId, callSession.getCallId());
-                            imageVideoSinkMap.put(key, imageVideoSink);
+                        ImageVideoSink imageVideoSink = new ImageVideoSink(userId, callSession.getCallId());
+                        ImageVideoSink existing = imageVideoSinkMap.putIfAbsent(key, imageVideoSink);
+                        if(existing == null) {
                             videoTrack.addSink(imageVideoSink);
+                        } else {
+                            // Not used; let its worker thread exit instead of leaking it
+                            imageVideoSink.onCallEnded();
                         }
                     }
 
@@ -93,11 +98,15 @@ public class CallService {
 
                     @Override
                     public void onCallEnd(CallSession callSession, CallEndReason endReason) {
-                        for (ImageVideoSink value : imageVideoSinkMap.values()) {
-                            if(value.callId.equals(callSession.getCallId())) {
+                        String callId = callSession.getCallId();
+                        // Stop and remove this call's sinks so the map doesn't grow across calls
+                        imageVideoSinkMap.values().removeIf(value -> {
+                            if(value.callId.equals(callId)) {
                                 value.onCallEnded();
+                                return true;
                             }
-                        }
+                            return false;
+                        });
                     }
                 });
 

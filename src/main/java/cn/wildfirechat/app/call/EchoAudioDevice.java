@@ -4,10 +4,13 @@ import cn.wildfirechat.AudioDevice;
 import cn.wildfirechat.CallSession;
 import cn.wildfirechat.pojos.Conversation;
 
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class EchoAudioDevice implements AudioDevice {
-    private ConcurrentLinkedQueue<byte[]> cacheQueue = new ConcurrentLinkedQueue<>();
+    // Bounded queue (10s of 10ms packets): oldest packets are dropped when full,
+    // an unbounded queue would grow forever if playout outpaces recording
+    private static final int MAX_QUEUE_SIZE = 1000;
+    private final LinkedBlockingQueue<byte[]> cacheQueue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
     private final Conversation conversation;
 
     public EchoAudioDevice(Conversation conversation) {
@@ -43,7 +46,7 @@ public class EchoAudioDevice implements AudioDevice {
     public void fetchRecordData(CallSession callSession, byte[] sampleData, int nSamples, int nSampleBytes, int nChannels, int nSampleRate, int nBuffSize) {
         if(cacheQueue.size() > 300) {
             byte[] data = cacheQueue.poll();
-            if(data.length == nBuffSize) {
+            if(data != null && data.length == nBuffSize) {
                 System.arraycopy(data, 0, sampleData, 0, nBuffSize);
             } else {
                 System.out.println("data size error");
@@ -59,6 +62,10 @@ public class EchoAudioDevice implements AudioDevice {
     public void playoutData(CallSession callSession, String userId, byte[] sampleData, int nBuffSize) {
         byte[] data = new byte[nBuffSize];
         System.arraycopy(sampleData, 0, data, 0, nBuffSize);
-        cacheQueue.add(data);
+        if (!cacheQueue.offer(data)) {
+            // Queue full: drop the oldest packet to make room
+            cacheQueue.poll();
+            cacheQueue.offer(data);
+        }
     }
 }

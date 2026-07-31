@@ -10,6 +10,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +51,8 @@ public class HttpUtils {
             int statusCode = response.getStatusLine().getStatusCode();
             if(statusCode != HttpStatus.SC_OK){
                 LOG.info("Request error: "+statusCode);
+                // Consume the entity so the underlying connection can be released/reused
+                EntityUtils.consumeQuietly(response.getEntity());
                 throw new Exception("Http request error with code:" + statusCode);
             }else{
                 BufferedReader in = new BufferedReader(new InputStreamReader(response.getEntity()

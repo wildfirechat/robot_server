@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -40,12 +41,10 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
     private String videoPipePath;
     private String audioPipePath;
 
-    // Executor for video/audio pipe readers and ffmpeg process monitor
-    private final ExecutorService mediaExecutorService = Executors.newFixedThreadPool(3, r -> {
-        Thread t = new Thread(r);
-        t.setDaemon(true);
-        return t;
-    });
+    // Executor for video/audio pipe readers and ffmpeg process monitor.
+    // Created lazily on start and shut down on full stop, so idle threads
+    // (whose stacks are native memory) don't linger for the life of the capturer.
+    private volatile ExecutorService mediaExecutorService;
     // Futures to manage the threads
     private volatile Future<?> videoReaderFuture;
     private volatile Future<?> audioReaderFuture;
@@ -168,6 +167,30 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
         }
     }
 
+    private ExecutorService getOrCreateMediaExecutor() {
+        ExecutorService executor = this.mediaExecutorService;
+        if (executor == null || executor.isShutdown()) {
+            executor = Executors.newFixedThreadPool(3, r -> {
+                Thread t = new Thread(r);
+                t.setDaemon(true);
+                return t;
+            });
+            this.mediaExecutorService = executor;
+        }
+        return executor;
+    }
+
+    // Opens and closes the write end of each pipe, so readers blocked in open()
+    // get an EOF and can exit. Used when ffmpeg fails to start.
+    private void unblockPipeReaders() {
+        try {
+            new FileOutputStream(videoPipePath).close();
+        } catch (Exception ignored) {}
+        try {
+            new FileOutputStream(audioPipePath).close();
+        } catch (Exception ignored) {}
+    }
+
     private synchronized void stopFFmpegAndReadersInternal(boolean retainPipes) {
         logger.debug("Stopping FFmpeg and readers (internal). Retain pipes: {}", retainPipes);
         isRunning = false; // Primary signal for all loops to stop
@@ -223,6 +246,11 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
         // 4. Delete pipes if not retaining
         if (!retainPipes) {
             deleteNamedPipes();
+            // Full stop: shut down the executor so its threads don't leak across calls
+            ExecutorService executor = this.mediaExecutorService;
+            if (executor != null) {
+                executor.shutdown();
+            }
         }
         ffmpegAudioInitialized = false; // Reset audio initialization status
         logger.debug("FFmpeg and readers stopped (internal). isRunning is now {}", isRunning);
@@ -262,14 +290,16 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
 
         isRunning = true;
 
-        videoReaderFuture = mediaExecutorService.submit(() -> {
+        ExecutorService executor = getOrCreateMediaExecutor();
+
+        videoReaderFuture = executor.submit(() -> {
             Thread.currentThread().setName("rtsp-video-pipe-reader");
             logger.debug("Video reader thread started for pipe: {}, frameSize: {}", videoPipePath, videoFrameSize);
             try (InputStream videoStream = new FileInputStream(videoPipePath)) {
-                byte[] frameBuffer = new byte[videoFrameSize]; // Create buffer once if frameSize is fixed
                 while (isRunning) {
-                    if (videoFrameSize <= 0) { // Should not happen if startFFmpegAndReaders validates params
-                        logger.warn("Video frame size is invalid ({}). Video reader pausing.", videoFrameSize);
+                    int frameSize = videoFrameSize; // Read volatile once per frame
+                    if (frameSize <= 0) { // Should not happen if startFFmpegAndReaders validates params
+                        logger.warn("Video frame size is invalid ({}). Video reader pausing.", frameSize);
                         try {
                             Thread.sleep(100);
                         } catch (InterruptedException e) {
@@ -278,9 +308,12 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
                         }
                         continue;
                     }
+                    // A fresh buffer per frame: reusing one buffer would make every queued
+                    // element alias the same array, corrupting all queued frames
+                    byte[] frameBuffer = new byte[frameSize];
                     int totalBytesRead = 0;
-                    while (totalBytesRead < videoFrameSize && isRunning) {
-                        int bytesReadThisTurn = videoStream.read(frameBuffer, totalBytesRead, videoFrameSize - totalBytesRead);
+                    while (totalBytesRead < frameSize && isRunning) {
+                        int bytesReadThisTurn = videoStream.read(frameBuffer, totalBytesRead, frameSize - totalBytesRead);
                         if (bytesReadThisTurn == -1) {
                             if (isRunning) logger.warn("Video pipe End-Of-Stream reached.");
                             isRunning = false;
@@ -289,12 +322,12 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
                         totalBytesRead += bytesReadThisTurn;
                     }
                     if (!isRunning) break;
-                    if (totalBytesRead == videoFrameSize) {
+                    if (totalBytesRead == frameSize) {
                         if (!videoCacheQueue.offer(frameBuffer, 100, TimeUnit.MILLISECONDS)) {
                             logger.warn("Video cache queue full, dropping frame.");
                         }
                     } else if (totalBytesRead > 0) {
-                        logger.warn("Incomplete video frame: {}/{}", totalBytesRead, videoFrameSize);
+                        logger.warn("Incomplete video frame: {}/{}", totalBytesRead, frameSize);
                     }
                 }
             } catch (Exception e) {
@@ -305,7 +338,7 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
             }
         });
 
-        audioReaderFuture = mediaExecutorService.submit(() -> {
+        audioReaderFuture = executor.submit(() -> {
             Thread.currentThread().setName("rtsp-audio-pipe-reader");
             logger.debug("Audio reader thread started for pipe: {}", audioPipePath);
             try (InputStream audioStream = new FileInputStream(audioPipePath)) {
@@ -349,7 +382,7 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
             }
         });
 
-        ffmpegMonitorFuture = mediaExecutorService.submit(() -> {
+        ffmpegMonitorFuture = executor.submit(() -> {
             Thread.currentThread().setName("rtsp-ffmpeg-process-monitor");
             Process localFfmpegProcess = null; // To avoid race if this.ffmpegProcess is nulled by stop
             try {
@@ -372,7 +405,7 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
                     String line;
                     // Check isRunning and localFfmpegProcess.isAlive() to ensure we only log while active
                     while (isRunning && localFfmpegProcess.isAlive() && (line = reader.readLine()) != null) {
-                        logger.info("FFMPEG: {}", line);
+                        logger.debug("FFMPEG: {}", line);
                     }
                 }
                 int exitCode = localFfmpegProcess.waitFor();
@@ -384,6 +417,8 @@ public class RtspCapturer implements JavaVideoCapture, AudioDevice {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
                 if (isRunning) logger.error("Error during FFmpeg process execution.", e);
+                // If ffmpeg failed to start, readers may be blocked opening the pipes; nudge them so they can exit
+                unblockPipeReaders();
             } finally {
                 logger.debug("FFmpeg process monitoring finished. isRunning: {}", isRunning);
                 if (isRunning) isRunning = false;
