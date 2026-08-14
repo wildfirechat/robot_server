@@ -2,11 +2,13 @@
 作为野火IM机器人应用的演示，本工程仅演示机器人应用的接口。其中用到图灵的免费版。
 
 #### 编译
-需要分平台打包，只支持linux x64和mac arm64平台，分别如下
+需要分平台打包，支持```linux + x86_64```、```linux + aarch64```和```macos + arm64```平台，分别如下
 ```
-mvn -Djavacpp.platform=linux-x86_64 -Dmaven.test.skip=true package 
-mvn -Djavacpp.platform=macosx-arm64 -Dmaven.test.skip=true package 
+mvn -Djavacpp.platform=linux-x86_64 -Dmaven.test.skip=true package
+mvn -Djavacpp.platform=linux-arm64 -Dwebrtc.platform=linux-aarch64 -Dmaven.test.skip=true package
+mvn -Djavacpp.platform=macosx-arm64 -Dwebrtc.platform=macos-aarch64 -Dmaven.test.skip=true package
 ```
+linux 系统对 glibc 版本有要求：```linux + x86_64```要求 glibc 2.28 及以上，```linux + aarch64```要求 glibc 2.29 及以上。
 
 #### 图灵
 本应用使用了[图灵机器人](http://www.tuling123.com)，需要申请到```atuling_key```，并配置到```robot.properties```中去。用户也可以自行更换为自己的机器人应用。如果不想使用图灵机器人，可以在配置里把参数```use_tuling```设置为false.

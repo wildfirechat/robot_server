@@ -152,7 +152,7 @@
 			<version>${netty.version}</version>
 		</dependency>
 
-<!--    使用这个命令打包某个平台架构的包 mvn -Djavacpp.platform=linux-x86_64 package 或 mvn -Djavacpp.platform=macosx-arm64 package  -->
+<!--    使用这个命令打包某个平台架构的包 mvn -Djavacpp.platform=linux-x86_64 package 或 mvn -Djavacpp.platform=macosx-arm64 package（linux aarch64 用 -Djavacpp.platform=linux-arm64）  -->
 		<dependency>
 			<groupId>org.bytedeco</groupId>
 			<artifactId>javacv-platform</artifactId>
@@ -166,23 +166,67 @@
 			<scope>system</scope>
 			<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT.jar</systemPath>
 		</dependency>
-
-		<dependency>
-			<groupId>dev.onvoid.webrtc</groupId>
-			<artifactId>webrtc-java-linux-x86_64</artifactId>
-			<version>0.1.0</version>
-			<scope>system</scope>
-			<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-linux-x86_64.jar</systemPath>
-		</dependency>
-
-		<dependency>
-			<groupId>dev.onvoid.webrtc</groupId>
-			<artifactId>webrtc-java-macos-aarch64</artifactId>
-			<version>0.1.0</version>
-			<scope>system</scope>
-			<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-macos-aarch64.jar</systemPath>
-		</dependency>
 	</dependencies>
+
+	<!-- 指定 webrtc-java 平台架构打包，例如：
+	     mvn package                            （默认 linux-x86_64，要求 glibc >= 2.28）
+	     mvn -Dwebrtc.platform=linux-aarch64 package  （要求 glibc >= 2.29）
+	     mvn -Dwebrtc.platform=macos-aarch64  package  -->
+	<profiles>
+		<profile>
+			<id>webrtc-linux-x86_64</id>
+			<activation>
+				<activeByDefault>true</activeByDefault>
+			</activation>
+			<dependencies>
+				<dependency>
+					<groupId>dev.onvoid.webrtc</groupId>
+					<artifactId>webrtc-java-linux-x86_64</artifactId>
+					<version>0.1.0</version>
+					<scope>system</scope>
+					<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-linux-x86_64.jar</systemPath>
+				</dependency>
+			</dependencies>
+		</profile>
+
+		<profile>
+			<id>webrtc-linux-aarch64</id>
+			<activation>
+				<property>
+					<name>webrtc.platform</name>
+					<value>linux-aarch64</value>
+				</property>
+			</activation>
+			<dependencies>
+				<dependency>
+					<groupId>dev.onvoid.webrtc</groupId>
+					<artifactId>webrtc-java-linux-aarch64</artifactId>
+					<version>0.1.0</version>
+					<scope>system</scope>
+					<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-linux-aarch64.jar</systemPath>
+				</dependency>
+			</dependencies>
+		</profile>
+
+		<profile>
+			<id>webrtc-macos-aarch64</id>
+			<activation>
+				<property>
+					<name>webrtc.platform</name>
+					<value>macos-aarch64</value>
+				</property>
+			</activation>
+			<dependencies>
+				<dependency>
+					<groupId>dev.onvoid.webrtc</groupId>
+					<artifactId>webrtc-java-macos-aarch64</artifactId>
+					<version>0.1.0</version>
+					<scope>system</scope>
+					<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-macos-aarch64.jar</systemPath>
+				</dependency>
+			</dependencies>
+		</profile>
+	</profiles>
 
 	<build>
 		<plugins>
