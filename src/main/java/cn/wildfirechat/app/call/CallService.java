@@ -37,6 +37,10 @@ public class CallService {
     @Value("${video.file.path}")
     private String videoFilePath;
 
+    //是否只发送音视频，不接收对方的音视频流（仅对高级版音视频有效）
+    @Value("${call.send.only:false}")
+    private boolean sendOnly;
+
     @Value("${public.ipv4:}")
     private String publicIpV4;
 
@@ -48,12 +52,16 @@ public class CallService {
 
     private final Map<String, Boolean> engineTypeMap = new HashMap<>();
 
+    //新版avenginekit不再使用单例，每个机器人一个实例
+    private AVEngineKit avEngineKit;
+
     @PostConstruct
     private void init() {
         RobotService robotService = new RobotService(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
 
         //1. 初始化音视频SDK
-        AVEngineKit.getInstance().init(mRobotConfig.getIm_id(), new SignalServerImpl(robotService), new AVEngineKitCallback() {
+        avEngineKit = new AVEngineKit();
+        avEngineKit.init(mRobotConfig.getIm_id(), new SignalServerImpl(robotService), new AVEngineKitCallback() {
             @Override
             public void onReceiveCall(CallSession callSession) {
                 LOG.info("onReceiveCall: {}", callSession.getCallId());
@@ -131,24 +139,24 @@ public class CallService {
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
-                        callSession.answer(callSession.isAudioOnly());
+                        callSession.answer(callSession.isAudioOnly(), sendOnly);
                     }
                 }).start();
             }
         });
 
 
-        //2. 设置turn服务地址，如果有多个，可以嗲用多次。如果是高级版，可以不用设置turn服务.
+        //2. 设置turn服务地址，如果有多个，可以调用多次。如果是高级版，可以不用设置turn服务。全局生效，只需设置一次
         if(!StringUtils.isEmpty(iceUrl)) {
             //如果是高级版，不用设置turn服务。
-            AVEngineKit.getInstance().addIceServer(iceUrl, iceUsername, icePassword);
+            AVEngineKit.addIceServer(iceUrl, iceUsername, icePassword);
         }
 
         //3. 设置公网IP地址。只有使用免费版音视频且服务拥有公网IP地址时才需要调用。
-        AVEngineKit.getInstance().setPublicIp(publicIpV4, publicIpV6);
+        AVEngineKit.setPublicIp(publicIpV4, publicIpV6);
 
         //4. 打开webrtc的日志，一般不用打开，除非出现问题需要debug
-        //AVEngineKit.getInstance().enableWebRTCLog();
+        //AVEngineKit.enableWebRTCLog();
     }
 
     public boolean hasPreferEngine(String userId) {
@@ -164,7 +172,7 @@ public class CallService {
     }
 
     public void startPrivateCall(Conversation conversation, boolean audioOnly, boolean advanceEngine) {
-        CallSession callSession = AVEngineKit.getInstance().startPrivateCall(conversation, audioOnly, advanceEngine, new EchoAudioDevice(conversation), new CallEventCallback() {
+        CallSession callSession = avEngineKit.startPrivateCall(conversation, audioOnly, advanceEngine, sendOnly, new EchoAudioDevice(conversation), new CallEventCallback() {
             @Override
             public void onCallStateUpdated(CallSession callSession, CallState state) {
 
@@ -201,7 +209,7 @@ public class CallService {
     }
 
     public void startGroupCall(Conversation conversation, List<String> targets, boolean audioOnly, boolean advanceEngine) {
-        CallSession callSession = AVEngineKit.getInstance().startGroupCall(conversation, targets, audioOnly, advanceEngine, new EchoAudioDevice(conversation), new CallEventCallback() {
+        CallSession callSession = avEngineKit.startGroupCall(conversation, targets, audioOnly, advanceEngine, sendOnly, new EchoAudioDevice(conversation), new CallEventCallback() {
             @Override
             public void onCallStateUpdated(CallSession callSession, CallState state) {
 
@@ -238,10 +246,10 @@ public class CallService {
     }
 
     public void onConferenceEvent(String event) {
-        AVEngineKit.getInstance().onConferenceEvent(event);
+        avEngineKit.onConferenceEvent(event);
     }
 
     public boolean onReceiveCallMessage(OutputMessageData messageData) {
-        return AVEngineKit.getInstance().onReceiveCallMessage(messageData);
+        return avEngineKit.onReceiveCallMessage(messageData);
     }
 }

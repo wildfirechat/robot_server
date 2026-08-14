@@ -4,7 +4,8 @@ import cn.wildfirechat.app.call.CallService;
 import cn.wildfirechat.app.tuling.TulingService;
 import cn.wildfirechat.app.webhook.WebhookService;
 import cn.wildfirechat.common.ErrorCode;
-import cn.wildfirechat.messagecontentbuilder.StreamingTextMessageContentBuilder;
+import cn.wildfirechat.sdk.messagecontent.StreamTextGeneratedMessageContent;
+import cn.wildfirechat.sdk.messagecontent.StreamTextGeneratingMessageContent;
 import cn.wildfirechat.pojos.*;
 import cn.wildfirechat.proto.ProtoConstants;
 import cn.wildfirechat.sdk.RobotService;
@@ -360,7 +361,12 @@ public class ServiceImpl implements Service {
                 i+= 5;
                 boolean finish = i >= fullText.length();
                 String partText = finish?fullText:fullText.substring(0, i);
-                MessagePayload payload = StreamingTextMessageContentBuilder.newBuilder(streamId).text(partText).generating(!finish).build();
+                MessagePayload payload;
+                if (finish) {
+                    payload = new StreamTextGeneratedMessageContent(streamId, partText).encode();
+                } else {
+                    payload = new StreamTextGeneratingMessageContent(streamId, partText).encode();
+                }
                 try {
                     IMResult<SendMessageResult> resultSendMessage;
                     if(messageUid > 0) {
