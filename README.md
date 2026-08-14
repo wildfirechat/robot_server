@@ -8,7 +8,7 @@ mvn -Djavacpp.platform=linux-x86_64 -Dmaven.test.skip=true package
 mvn -Djavacpp.platform=linux-arm64 -Dwebrtc.platform=linux-aarch64 -Dmaven.test.skip=true package
 mvn -Djavacpp.platform=macosx-arm64 -Dwebrtc.platform=macos-aarch64 -Dmaven.test.skip=true package
 ```
-linux 系统对 glibc 版本有要求：```linux + x86_64```要求 glibc 2.28 及以上，```linux + aarch64```要求 glibc 2.29 及以上。
+linux 系统对 glibc 版本有要求：```linux + x86_64```和```linux + aarch64```均要求 glibc 2.29 及以上（即 Debian 11+ / Ubuntu 20.04+，不支持 CentOS 8、Debian 10）。
 
 #### 图灵
 本应用使用了[图灵机器人](http://www.tuling123.com)，需要申请到```atuling_key```，并配置到```robot.properties```中去。用户也可以自行更换为自己的机器人应用。如果不想使用图灵机器人，可以在配置里把参数```use_tuling```设置为false.
