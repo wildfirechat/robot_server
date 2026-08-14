@@ -41,6 +41,10 @@ public class CallService {
     @Value("${call.send.only:false}")
     private boolean sendOnly;
 
+    //是否定期抓取对端视频截屏保存为bmp文件（调试用，会产生大量磁盘文件）
+    @Value("${video.snapshot.enabled:true}")
+    private boolean videoSnapshotEnabled;
+
     @Value("${public.ipv4:}")
     private String publicIpV4;
 
@@ -89,7 +93,7 @@ public class CallService {
                     @Override
                     public void onReceiveRemoteVideoTrack(CallSession callSession, String userId, VideoTrack videoTrack) {
                         String key = userId + "_" + callSession.getCallId();
-                        ImageVideoSink imageVideoSink = new ImageVideoSink(userId, callSession.getCallId());
+                        ImageVideoSink imageVideoSink = new ImageVideoSink(userId, callSession.getCallId(), videoSnapshotEnabled);
                         ImageVideoSink existing = imageVideoSinkMap.putIfAbsent(key, imageVideoSink);
                         if(existing == null) {
                             videoTrack.addSink(imageVideoSink);

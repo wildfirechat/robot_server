@@ -30,12 +30,14 @@ public class ImageVideoSink implements VideoTrackSink  {
     volatile boolean isRun = true;
     public final String userId;
     public final String callId;
+    private final boolean snapshotEnabled;
     private long receivedFrames = 0;
 
-    public ImageVideoSink(String userId, String callId) {
+    public ImageVideoSink(String userId, String callId, boolean snapshotEnabled) {
         this.userId = userId;
         this.callId = callId;
-        LOG.info("ImageVideoSink created, userId={}, callId={}", userId, callId);
+        this.snapshotEnabled = snapshotEnabled;
+        LOG.info("ImageVideoSink created, userId={}, callId={}, snapshotEnabled={}", userId, callId, snapshotEnabled);
         Thread worker = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -48,7 +50,7 @@ public class ImageVideoSink implements VideoTrackSink  {
                             if(receivedFrames == 1 || receivedFrames % 300 == 0) {
                                 LOG.info("ImageVideoSink {}/{} received {} frames", userId, callId, receivedFrames);
                             }
-                            if(System.currentTimeMillis() - time > 3000) {
+                            if(snapshotEnabled && System.currentTimeMillis() - time > 3000) {
                                 time = System.currentTimeMillis();
                                 try {
                                     byte[] rgb = new byte[frame.buffer.getWidth()*frame.buffer.getHeight()*4];
