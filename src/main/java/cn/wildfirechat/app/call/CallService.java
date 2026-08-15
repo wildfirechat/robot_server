@@ -51,6 +51,11 @@ public class CallService {
     @Value("${public.ipv6:}")
     private String publicIpV6;
 
+    //音视频高级版janus服务地址替换关系（仅高级版音视频使用）。当本服务与janus服务在同一内网时，
+    //把SDP中janus的公网IP替换为内网IP。格式：公网IP:内网IP，多组之间用英文逗号分隔
+    @Value("${sdp.ip.replace.map:}")
+    private String sdpIpReplaceMap;
+
     // ConcurrentHashMap: entries are removed on call end, otherwise the map would grow forever
     private Map<String, ImageVideoSink> imageVideoSinkMap = new ConcurrentHashMap<>();
 
@@ -159,7 +164,19 @@ public class CallService {
         //3. 设置公网IP地址。只有使用免费版音视频且服务拥有公网IP地址时才需要调用。
         AVEngineKit.setPublicIp(publicIpV4, publicIpV6);
 
-        //4. 打开webrtc的日志，一般不用打开，除非出现问题需要debug
+        //4. 设置janus服务地址替换关系。只有使用高级版音视频且本服务与janus服务在同一内网时才需要调用。全局生效，只需设置一次
+        if(!StringUtils.isEmpty(sdpIpReplaceMap)) {
+            Map<String, String> ipReplaceMap = new HashMap<>();
+            for (String pair : sdpIpReplaceMap.split(",")) {
+                String[] kv = pair.trim().split(":");
+                if(kv.length == 2) {
+                    ipReplaceMap.put(kv[0].trim(), kv[1].trim());
+                }
+            }
+            AVEngineKit.setRemoteSdpIpReplaceMap(ipReplaceMap);
+        }
+
+        //5. 打开webrtc的日志，一般不用打开，除非出现问题需要debug
         //AVEngineKit.enableWebRTCLog();
     }
 
