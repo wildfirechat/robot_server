@@ -169,9 +169,10 @@
 	</dependencies>
 
 	<!-- 指定 webrtc-java 平台架构打包，例如：
-	     mvn package                            （默认 linux-x86_64，要求 glibc >= 2.28）
+	     mvn package                            （默认 linux-x86_64，要求 glibc >= 2.29）
 	     mvn -Dwebrtc.platform=linux-aarch64 package  （要求 glibc >= 2.29）
-	     mvn -Dwebrtc.platform=macos-aarch64  package  -->
+	     mvn -Dwebrtc.platform=macos-aarch64  package
+	     mvn -Dwebrtc.platform=windows-x86_64 package  -->
 	<profiles>
 		<profile>
 			<id>webrtc-linux-x86_64</id>
@@ -223,6 +224,25 @@
 					<version>0.1.0</version>
 					<scope>system</scope>
 					<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-macos-aarch64.jar</systemPath>
+				</dependency>
+			</dependencies>
+		</profile>
+
+		<profile>
+			<id>webrtc-windows-x86_64</id>
+			<activation>
+				<property>
+					<name>webrtc.platform</name>
+					<value>windows-x86_64</value>
+				</property>
+			</activation>
+			<dependencies>
+				<dependency>
+					<groupId>dev.onvoid.webrtc</groupId>
+					<artifactId>webrtc-java-windows-x86_64</artifactId>
+					<version>0.1.0</version>
+					<scope>system</scope>
+					<systemPath>${project.basedir}/src/lib/webrtc-java-0.9.0-SNAPSHOT-windows-x86_64.jar</systemPath>
 				</dependency>
 			</dependencies>
 		</profile>

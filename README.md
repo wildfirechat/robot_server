@@ -2,12 +2,18 @@
 作为野火IM机器人应用的演示，本工程仅演示机器人应用的接口。其中用到图灵的免费版。
 
 #### 编译
-需要分平台打包，支持```linux + x86_64```、```linux + aarch64```和```macos + arm64```平台，分别如下
+需要分平台打包，支持```windows + x86_64```、```linux + x86_64```、```linux + aarch64```和```macos + arm64```平台，分别如下
 ```
 mvn -Djavacpp.platform=linux-x86_64 -Dmaven.test.skip=true package
 mvn -Djavacpp.platform=linux-arm64 -Dwebrtc.platform=linux-aarch64 -Dmaven.test.skip=true package
 mvn -Djavacpp.platform=macosx-arm64 -Dwebrtc.platform=macos-aarch64 -Dmaven.test.skip=true package
+mvn -Djavacpp.platform=windows-x86_64 -Dwebrtc.platform=windows-x86_64 -Dmaven.test.skip=true package
 ```
+注意：在 Windows PowerShell 中，带点的 ```-D``` 参数必须加引号，否则会被错误拆分：
+```
+mvn "-Djavacpp.platform=windows-x86_64" "-Dwebrtc.platform=windows-x86_64" -Dmaven.test.skip=true package
+```
+或在 cmd 中执行原命令即可。
 linux 系统对 glibc 版本有要求：```linux + x86_64```和```linux + aarch64```均要求 glibc 2.29 及以上（即 Debian 11+ / Ubuntu 20.04+，不支持 CentOS 8、Debian 10）。
 
 #### 图灵
