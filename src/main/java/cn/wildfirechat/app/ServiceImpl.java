@@ -363,9 +363,9 @@ public class ServiceImpl implements Service {
                 String partText = finish?fullText:fullText.substring(0, i);
                 MessagePayload payload;
                 if (finish) {
-                    payload = new StreamTextGeneratedMessageContent(streamId, partText).encode();
+                    payload = new StreamTextGeneratedMessageContent(partText, streamId).encode();
                 } else {
-                    payload = new StreamTextGeneratingMessageContent(streamId, partText).encode();
+                    payload = new StreamTextGeneratingMessageContent(partText, streamId).encode();
                 }
                 try {
                     IMResult<SendMessageResult> resultSendMessage;
