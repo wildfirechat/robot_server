@@ -2,6 +2,8 @@ package cn.wildfirechat.app.call;
 
 import cn.wildfirechat.*;
 import cn.wildfirechat.app.RobotConfig;
+import cn.wildfirechat.app.voiceagent.AiAudioDevice;
+import cn.wildfirechat.app.voiceagent.VoiceAgentFactory;
 import cn.wildfirechat.impl.SignalServerImpl;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.OutputMessageData;
@@ -24,6 +26,9 @@ public class CallService {
     private static final Logger LOG = LoggerFactory.getLogger(CallService.class);
     @Autowired
     private RobotConfig mRobotConfig;
+
+    @Autowired
+    private VoiceAgentFactory voiceAgentFactory;
 
     @Value("${ice.url}")
     private String iceUrl;
@@ -79,10 +84,15 @@ public class CallService {
                 }
                 LOG.info("engineTypeMap: {}, {}", engineTypeMap.size(), engineTypeMap);
 
+                final AudioDevice audioDevice = createAudioDevice(callSession.getConversation());
+
                 callSession.setEventCallback(new CallEventCallback() {
                     @Override
                     public void onCallStateUpdated(CallSession callSession, CallState state) {
-
+                        // 接通之后才说开场白，太早对方还听不到
+                        if (state == CallState.kWFAVEngineStateConnected && audioDevice instanceof AiAudioDevice) {
+                            ((AiAudioDevice) audioDevice).getSession().greet();
+                        }
                     }
 
                     @Override
@@ -116,6 +126,9 @@ public class CallService {
                     @Override
                     public void onCallEnd(CallSession callSession, CallEndReason endReason) {
                         String callId = callSession.getCallId();
+                        if (audioDevice instanceof AiAudioDevice) {
+                            ((AiAudioDevice) audioDevice).close();
+                        }
                         // Stop and remove this call's sinks so the map doesn't grow across calls
                         imageVideoSinkMap.values().removeIf(value -> {
                             if(value.callId.equals(callId)) {
@@ -134,19 +147,20 @@ public class CallService {
 //                    callSession.setVideoCapture(capturer);
 //                }
 
-                callSession.setAudioDevice(new EchoAudioDevice(callSession.getConversation()));
+                callSession.setAudioDevice(audioDevice);
                 if(!callSession.isAudioOnly()) {
                     callSession.setVideoCapture(new FileVideoCapture(videoFilePath, callSession.getConversation(), callSession.getCallId()));
                 }
 
-                //延迟3秒接听
+                //延迟接听，时长可配（agent.answerDelayMs）
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
                         try {
-                            Thread.sleep(3000);
+                            Thread.sleep(voiceAgentFactory.getAnswerDelayMs());
                         } catch (InterruptedException e) {
-                            e.printStackTrace();
+                            Thread.currentThread().interrupt();
+                            return;
                         }
                         callSession.answer(callSession.isAudioOnly(), sendOnly);
                     }
@@ -180,6 +194,18 @@ public class CallService {
         //AVEngineKit.enableWebRTCLog();
     }
 
+    /**
+     * 语音 Agent 开着就用 AI 音频设备，关掉退回原来的 EchoAudioDevice（延迟 3 秒复读）。
+     * 保留复读机是为了排查：如果 AI 不出声，先把开关关掉打一通，能复读就说明
+     * 通话链路本身是通的，问题在 ASR/LLM/TTS 那一段。
+     */
+    private AudioDevice createAudioDevice(Conversation conversation) {
+        if (voiceAgentFactory.isEnabled()) {
+            return voiceAgentFactory.createDevice(conversation);
+        }
+        return new EchoAudioDevice(conversation);
+    }
+
     public boolean hasPreferEngine(String userId) {
         boolean hasPreferEngine = engineTypeMap.containsKey(userId);
         if(!hasPreferEngine) {
@@ -193,10 +219,13 @@ public class CallService {
     }
 
     public void startPrivateCall(Conversation conversation, boolean audioOnly, boolean advanceEngine) {
-        CallSession callSession = avEngineKit.startPrivateCall(conversation, audioOnly, advanceEngine, sendOnly, new EchoAudioDevice(conversation), new CallEventCallback() {
+        final AudioDevice audioDevice = createAudioDevice(conversation);
+        CallSession callSession = avEngineKit.startPrivateCall(conversation, audioOnly, advanceEngine, sendOnly, audioDevice, new CallEventCallback() {
             @Override
             public void onCallStateUpdated(CallSession callSession, CallState state) {
-
+                if (state == CallState.kWFAVEngineStateConnected && audioDevice instanceof AiAudioDevice) {
+                    ((AiAudioDevice) audioDevice).getSession().greet();
+                }
             }
 
             @Override
@@ -221,7 +250,9 @@ public class CallService {
 
             @Override
             public void onCallEnd(CallSession callSession, CallEndReason endReason) {
-
+                if (audioDevice instanceof AiAudioDevice) {
+                    ((AiAudioDevice) audioDevice).close();
+                }
             }
         }, 0, null);
         if(!callSession.isAudioOnly()) {
@@ -230,10 +261,13 @@ public class CallService {
     }
 
     public void startGroupCall(Conversation conversation, List<String> targets, boolean audioOnly, boolean advanceEngine) {
-        CallSession callSession = avEngineKit.startGroupCall(conversation, targets, audioOnly, advanceEngine, sendOnly, new EchoAudioDevice(conversation), new CallEventCallback() {
+        final AudioDevice audioDevice = createAudioDevice(conversation);
+        CallSession callSession = avEngineKit.startGroupCall(conversation, targets, audioOnly, advanceEngine, sendOnly, audioDevice, new CallEventCallback() {
             @Override
             public void onCallStateUpdated(CallSession callSession, CallState state) {
-
+                if (state == CallState.kWFAVEngineStateConnected && audioDevice instanceof AiAudioDevice) {
+                    ((AiAudioDevice) audioDevice).getSession().greet();
+                }
             }
 
             @Override
@@ -258,7 +292,9 @@ public class CallService {
 
             @Override
             public void onCallEnd(CallSession callSession, CallEndReason endReason) {
-
+                if (audioDevice instanceof AiAudioDevice) {
+                    ((AiAudioDevice) audioDevice).close();
+                }
             }
         }, 0, null);
         if(!callSession.isAudioOnly()) {

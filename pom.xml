@@ -78,6 +78,13 @@
 			<version>${log4j2.version}</version>
 		</dependency>
 
+		<!-- wf-voice 实时 ASR 走 WebSocket，LLM/TTS 走 HTTP，OkHttp 一个依赖全包 -->
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>okhttp</artifactId>
+			<version>3.14.9</version>
+		</dependency>
+
 		<dependency>
 			<groupId>com.google.code.gson</groupId>
 			<artifactId>gson</artifactId>
