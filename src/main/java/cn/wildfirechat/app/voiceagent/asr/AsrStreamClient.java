@@ -10,6 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -42,6 +45,9 @@ public class AsrStreamClient {
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream();
     private volatile WebSocket ws;
     private volatile boolean registered;
+    /** 断线重连。重连期间送进来的音频会被丢掉（VAD 状态也丢了），但通话不哑 */
+    private final ScheduledExecutorService retryTimer;
+    private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
 
     /**
      * @param batchMs 攒够多少毫秒的音频再发一帧。发太碎会有大量小包开销，
@@ -53,6 +59,11 @@ public class AsrStreamClient {
         this.clientId = clientId;
         this.onText = onText;
         this.batchBytes = Math.max(1, 16000 / 1000 * batchMs) * 2;
+        this.retryTimer = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "asr-retry-" + clientId);
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     public void connect() {
@@ -60,32 +71,58 @@ public class AsrStreamClient {
             return;
         }
         Request request = new Request.Builder().url(url).build();
-        ws = http.newWebSocket(request, new WebSocketListener() {
+        http.newWebSocket(request, new WebSocketListener() {
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
+                ws = webSocket;
+                registered = true;
                 LOG.info("ASR 已连接 {} client_id={}", url, clientId);
                 webSocket.send(clientId);
-                registered = true;
             }
 
             @Override
             public void onMessage(WebSocket webSocket, String text) {
-                handleText(text);
+                if (webSocket == ws) {
+                    handleText(text);
+                }
             }
 
             @Override
             public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                if (webSocket != ws) {
+                    return;
+                }
                 registered = false;
                 if (!closed.get()) {
-                    LOG.warn("ASR 连接断开 client_id={}：{}", clientId, t.toString());
+                    LOG.warn("ASR 连接断开 client_id={}：{}，稍后重连", clientId, t.toString());
+                    scheduleReconnect();
                 }
             }
 
             @Override
             public void onClosed(WebSocket webSocket, int code, String reason) {
+                if (webSocket != ws) {
+                    return;
+                }
                 registered = false;
+                if (!closed.get()) {
+                    LOG.warn("ASR 连接被关闭 client_id={} code={}，稍后重连", clientId, code);
+                    scheduleReconnect();
+                }
             }
         });
+    }
+
+    private void scheduleReconnect() {
+        if (closed.get() || !reconnectScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        retryTimer.schedule(() -> {
+            reconnectScheduled.set(false);
+            if (!closed.get()) {
+                connect();
+            }
+        }, 2, TimeUnit.SECONDS);
     }
 
     private void handleText(String text) {
@@ -147,6 +184,7 @@ public class AsrStreamClient {
 
     public void close() {
         if (closed.compareAndSet(false, true)) {
+            retryTimer.shutdownNow();
             WebSocket s = ws;
             if (s != null) {
                 s.close(1000, "call ended");

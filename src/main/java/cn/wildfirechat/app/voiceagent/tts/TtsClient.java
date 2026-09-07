@@ -1,5 +1,6 @@
 package cn.wildfirechat.app.voiceagent.tts;
 
+import cn.wildfirechat.app.voiceagent.audio.Pcm;
 import cn.wildfirechat.app.voiceagent.audio.WavCodec;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -135,14 +136,11 @@ public class TtsClient {
             WavCodec.Wav wav = WavCodec.decode(data);
             return new Audio(wav.mono, wav.sampleRate);
         }
-        short[] mono = new short[data.length / 2];
-        for (int i = 0; i < mono.length; i++) {
-            mono[i] = (short) ((data[i * 2] & 0xff) | (data[i * 2 + 1] << 8));
-        }
+        short[] mono = Pcm.leToShorts(data, 0, data.length);
         return new Audio(mono, rawSampleRate);
     }
 
-    private static String escapeJson(String s) {
+    static String escapeJson(String s) {
         StringBuilder sb = new StringBuilder(s.length() + 16);
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);

@@ -6,6 +6,7 @@ import cn.wildfirechat.app.voiceagent.audio.PlaybackQueue;
 import cn.wildfirechat.app.voiceagent.audio.Resampler;
 import cn.wildfirechat.app.voiceagent.llm.LlmClient;
 import cn.wildfirechat.app.voiceagent.tts.TtsClient;
+import cn.wildfirechat.app.voiceagent.tts.WsTtsClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,6 +36,8 @@ public class VoiceAgentSession {
     private final VoiceAgentConfig config;
     private final LlmClient llm;
     private final TtsClient tts;
+    /** 流式 TTS（wf-tts WebSocket），为 null 时走 HTTP 整句合成 */
+    private final WsTtsClient wsTts;
     private final PlaybackQueue playback;
     private final String callId;
     /** 通话文字记录的回调：(说话人, 文本)，说话人为 null 表示是 AI 说的 */
@@ -57,11 +60,12 @@ public class VoiceAgentSession {
     private volatile Resampler ttsResampler;
     private volatile boolean closed;
 
-    public VoiceAgentSession(VoiceAgentConfig config, LlmClient llm, TtsClient tts,
+    public VoiceAgentSession(VoiceAgentConfig config, LlmClient llm, TtsClient tts, WsTtsClient wsTts,
                              String callId, BiConsumer<String, String> transcript) {
         this.config = config;
         this.llm = llm;
         this.tts = tts;
+        this.wsTts = wsTts;
         this.callId = callId;
         this.transcript = transcript;
         // 通话格式还不知道，先按 48k 立体声估一个上限，setCallFormat 里再按真实格式重算
@@ -149,6 +153,9 @@ public class VoiceAgentSession {
             return;
         }
         int turn = currentTurn.incrementAndGet();
+        // 新一轮开始，上一轮的残留音频（如果有）已经过时，清掉免得新回答排在旧回答后面
+        playback.flush();
+        LOG.info("[{}] 用户说完，触发回复：{}", callId, utterance);
         synchronized (history) {
             history.add(new LlmClient.Message("user", utterance));
         }
@@ -176,6 +183,10 @@ public class VoiceAgentSession {
                 history.add(new LlmClient.Message("assistant", full.trim()));
             }
             transcript.accept(null, full.trim());
+        } else if (full != null && full.trim().isEmpty() && alive(turn)) {
+            // LLM 请求失败时不能让用户面对死寂，说一句兜底的
+            LOG.warn("[{}] LLM 没有返回内容，播报兜底语", callId);
+            speak("不好意思，我这边出了点问题，能麻烦再说一遍吗？", turn);
         }
     }
 
@@ -185,34 +196,80 @@ public class VoiceAgentSession {
             if (!alive(turn)) {
                 return;
             }
-            TtsClient.Audio audio = tts.synthesize(sentence);
-            if (audio == null || audio.mono.length == 0 || !alive(turn)) {
-                return;
-            }
             PcmFormat fmt = awaitCallFormat(turn);
             if (fmt == null) {
                 LOG.warn("[{}] 通话音频格式一直没确定，丢弃这句合成结果：{}", callId, sentence);
                 return;
             }
-            Resampler rs = ttsResampler;
-            if (rs == null || rs.getSrcRate() != audio.sampleRate || rs.getDstRate() != fmt.sampleRate) {
-                rs = new Resampler(audio.sampleRate, fmt.sampleRate);
-                ttsResampler = rs;
-            }
-            short[] resampled = rs.process(audio.mono);
-            if (!alive(turn)) {
+            if (wsTts != null && streamSpeak(sentence, turn, fmt)) {
                 return;
             }
-            // 队列满就在这儿等播放腾空位。TTS 比实时快，长回答必然堆积，
-            // 这里等一等，比让队列丢掉正在播的句子强得多
-            if (playback.offer(Pcm.fromMono(resampled, fmt.channels), () -> alive(turn))) {
-                LOG.debug("[{}] 入队 {}ms 音频，队列剩 {}ms：{}", callId,
-                        resampled.length * 1000L / Math.max(1, fmt.sampleRate),
-                        pendingMs(fmt), sentence);
-            } else {
-                LOG.info("[{}] 本轮已作废，丢弃这句合成结果：{}", callId, sentence);
-            }
+            httpSpeak(sentence, turn, fmt);
         });
+    }
+
+    /**
+     * 流式合成：wf-tts 边合成边推 PCM，每收到一块就重采样进播放队列，
+     * 不等整句合成完。返回 false 表示流式通道故障，调用方回退 HTTP。
+     */
+    private boolean streamSpeak(String sentence, int turn, PcmFormat fmt) {
+        long t0 = System.currentTimeMillis();
+        boolean[] firstChunk = {true};
+        Resampler[] rs = {null};
+        boolean ok = wsTts.synthesize(sentence, (pcm, rate) -> {
+            if (!alive(turn)) {
+                return false;
+            }
+            Resampler r = rs[0];
+            if (r == null || r.getSrcRate() != rate || r.getDstRate() != fmt.sampleRate) {
+                r = new Resampler(rate, fmt.sampleRate);
+                rs[0] = r;
+            }
+            short[] resampled = r.process(pcm);
+            if (resampled.length == 0) {
+                return true;
+            }
+            if (firstChunk[0]) {
+                firstChunk[0] = false;
+                LOG.info("[{}] 首块音频就绪，用时 {}ms：{}", callId, System.currentTimeMillis() - t0, sentence);
+            }
+            // 队列满就在这儿等播放腾空位，被 flush 叫醒说明本轮已作废
+            return playback.offer(Pcm.fromMono(resampled, fmt.channels), () -> alive(turn));
+        });
+        if (!ok && alive(turn)) {
+            LOG.warn("[{}] 流式合成通道故障，回退 HTTP 整句合成：{}", callId, sentence);
+        }
+        // 被打断（alive 变 false）也算这次合成已经处理过，不要回退 HTTP 再播一遍
+        return ok || !alive(turn);
+    }
+
+    /** HTTP 整句合成：等整句音频返回后一次性入队，作为流式通道的兜底 */
+    private void httpSpeak(String sentence, int turn, PcmFormat fmt) {
+        if (!alive(turn)) {
+            return;
+        }
+        TtsClient.Audio audio = tts.synthesize(sentence);
+        if (audio == null || audio.mono.length == 0 || !alive(turn)) {
+            return;
+        }
+        Resampler rs = ttsResampler;
+        if (rs == null || rs.getSrcRate() != audio.sampleRate || rs.getDstRate() != fmt.sampleRate) {
+            rs = new Resampler(audio.sampleRate, fmt.sampleRate);
+            ttsResampler = rs;
+        }
+        short[] resampled = rs.process(audio.mono);
+        if (!alive(turn)) {
+            return;
+        }
+        // 队列满就在这儿等播放腾空位。TTS 比实时快，长回答必然堆积，
+        // 这里等一等，比让队列丢掉正在播的句子强得多
+        if (playback.offer(Pcm.fromMono(resampled, fmt.channels), () -> alive(turn))) {
+            LOG.debug("[{}] 入队 {}ms 音频，队列剩 {}ms：{}", callId,
+                    resampled.length * 1000L / Math.max(1, fmt.sampleRate),
+                    pendingMs(fmt), sentence);
+        } else {
+            LOG.info("[{}] 本轮已作废，丢弃这句合成结果：{}", callId, sentence);
+        }
     }
 
     /**
@@ -235,18 +292,24 @@ public class VoiceAgentSession {
         return playback.pendingBytes() * 1000L / Math.max(1, bytesPerSecond(fmt));
     }
 
-    /** 用户开口了：作废这一轮，把还没播的 AI 语音全丢掉 */
+    /**
+     * 用户开口了：作废这一轮，把还没播的 AI 语音全丢掉。
+     *
+     * 即使播放队列是空的也要作废——用户可能是在 LLM 正在生成、TTS 正在合成时插的话，
+     * 不作废的话 AI 会接着回答一个已经过时的问题。
+     */
     public void bargeIn() {
-        if (!playback.isPlaying()) {
-            return;
-        }
         PcmFormat fmt = callFormat;
         long discardedMs = fmt == null ? -1 : pendingMs(fmt);
         currentTurn.incrementAndGet();
         playback.flush();
         // 打断和丢音在听感上是一回事，所以把丢掉多少毫秒打出来：
         // 排查时看这行就知道是真被打断了，还是回声把 SpeechGate 误触了
-        LOG.info("[{}] 用户插话，打断当前回复，丢弃未播音频 {}ms", callId, discardedMs);
+        if (discardedMs > 0) {
+            LOG.info("[{}] 用户插话，打断当前回复，丢弃未播音频 {}ms", callId, discardedMs);
+        } else {
+            LOG.info("[{}] 用户插话，作废在途的生成/合成", callId);
+        }
     }
 
     private boolean alive(int turn) {
@@ -266,6 +329,9 @@ public class VoiceAgentSession {
         closed = true;
         currentTurn.incrementAndGet();
         playback.close();
+        if (wsTts != null) {
+            wsTts.close();
+        }
         timer.shutdownNow();
         llmExec.shutdownNow();
         ttsExec.shutdownNow();

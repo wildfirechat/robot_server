@@ -3,6 +3,7 @@ package cn.wildfirechat.app.voiceagent;
 import cn.wildfirechat.app.RobotConfig;
 import cn.wildfirechat.app.voiceagent.llm.LlmClient;
 import cn.wildfirechat.app.voiceagent.tts.TtsClient;
+import cn.wildfirechat.app.voiceagent.tts.WsTtsClient;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
 import cn.wildfirechat.sdk.RobotService;
@@ -46,14 +47,16 @@ public class VoiceAgentFactory {
                 .pingInterval(30, TimeUnit.SECONDS)
                 .build();
         llm = new LlmClient(http, config.getLlmUrl(), config.getLlmKey(), config.getLlmModel(),
-                config.getLlmTemperature(), config.getLlmMinSentenceChars(), config.getLlmMaxSentenceChars());
+                config.getLlmTemperature(), config.getLlmMinSentenceChars(), config.getLlmMaxSentenceChars(),
+                config.getLlmMaxTokens());
         tts = new TtsClient(http, config.getTtsUrl(), config.getTtsKey(), config.getTtsBodyTemplate(),
                 config.getTtsModel(), config.getTtsVoice(),
                 config.getTtsFormat(), config.getTtsRawSampleRate());
         robotService = new RobotService(robotConfig.getIm_url(), robotConfig.getIm_id(), robotConfig.getIm_secret());
-        LOG.info("语音 Agent 已就绪：enabled={} asr={} llm={}({}) tts={}({}/{})",
+        LOG.info("语音 Agent 已就绪：enabled={} asr={} llm={}({}) tts={}({}/{}) stream={}({})",
                 config.isEnabled(), config.getAsrUrl(), config.getLlmUrl(), config.getLlmModel(),
-                config.getTtsUrl(), config.getTtsModel(), config.getTtsVoice());
+                config.getTtsUrl(), config.getTtsModel(), config.getTtsVoice(),
+                config.isTtsStream(), config.getTtsWsUrl());
     }
 
     public boolean isEnabled() {
@@ -73,7 +76,11 @@ public class VoiceAgentFactory {
      */
     public AiAudioDevice createDevice(Conversation conversation) {
         String tag = "call-" + seq.incrementAndGet();
-        VoiceAgentSession session = new VoiceAgentSession(config, llm, tts, tag,
+        // 流式 TTS 每通电话一条连接：合成是阻塞顺序的，多通电话并发时各走各的连接
+        WsTtsClient wsTts = config.isTtsStream()
+                ? new WsTtsClient(http, config.getTtsWsUrl(), config.getTtsVoice())
+                : null;
+        VoiceAgentSession session = new VoiceAgentSession(config, llm, tts, wsTts, tag,
                 (speaker, text) -> sendTranscript(conversation, speaker, text));
         return new AiAudioDevice(config, session, http, tag);
     }

@@ -34,6 +34,16 @@ public final class Pcm {
         return out;
     }
 
+    /** 小端 int16 字节流转单声道采样。 */
+    public static short[] leToShorts(byte[] data, int off, int len) {
+        int n = len / 2;
+        short[] out = new short[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = (short) ((data[off + i * 2] & 0xff) | (data[off + i * 2 + 1] << 8));
+        }
+        return out;
+    }
+
     /** 帧的均方根，用来判断这一帧有没有人在说话。 */
     public static double rms(short[] samples) {
         if (samples.length == 0) {

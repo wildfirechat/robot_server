@@ -28,12 +28,18 @@ public class VoiceAgentConfig {
             + "如果对方的问题不清楚，就直接反问一句。";
     /** 保留多少轮对话作为上下文（一轮 = 一问一答） */
     private int llmMaxHistoryTurns = 12;
+    /** 单次回复的 token 上限。语音对话的回答应该短，给个硬上限防偶发长篇大论。<=0 不限 */
+    private int llmMaxTokens = 200;
     /** 软标点断句的最小字数，太短的半句不值得单独送去合成 */
     private int llmMinSentenceChars = 8;
     /** 迟迟没有标点时的强制断句字数，防止一直不出声 */
     private int llmMaxSentenceChars = 60;
 
     // ---- TTS：野火没有自带合成，必须外挂 ----
+    /** 流式合成（wf-tts WebSocket）开关，开了优先走 ws，失败回退 HTTP 整句合成 */
+    private boolean ttsStream = true;
+    /** wf-tts 的 WebSocket 流式接口地址 */
+    private String ttsWsUrl = "ws://127.0.0.1:12438";
     private String ttsUrl = "http://127.0.0.1:9880/v1/audio/speech";
     private String ttsKey = "";
     /** 合成用的模型名，填进模板的 {model} */
@@ -91,10 +97,16 @@ public class VoiceAgentConfig {
     public void setLlmSystemPrompt(String v) { this.llmSystemPrompt = v; }
     public int getLlmMaxHistoryTurns() { return llmMaxHistoryTurns; }
     public void setLlmMaxHistoryTurns(int v) { this.llmMaxHistoryTurns = v; }
+    public int getLlmMaxTokens() { return llmMaxTokens; }
+    public void setLlmMaxTokens(int v) { this.llmMaxTokens = v; }
     public int getLlmMinSentenceChars() { return llmMinSentenceChars; }
     public void setLlmMinSentenceChars(int v) { this.llmMinSentenceChars = v; }
     public int getLlmMaxSentenceChars() { return llmMaxSentenceChars; }
     public void setLlmMaxSentenceChars(int v) { this.llmMaxSentenceChars = v; }
+    public boolean isTtsStream() { return ttsStream; }
+    public void setTtsStream(boolean v) { this.ttsStream = v; }
+    public String getTtsWsUrl() { return ttsWsUrl; }
+    public void setTtsWsUrl(String v) { this.ttsWsUrl = v; }
     public String getTtsUrl() { return ttsUrl; }
     public void setTtsUrl(String v) { this.ttsUrl = v; }
     public String getTtsKey() { return ttsKey; }

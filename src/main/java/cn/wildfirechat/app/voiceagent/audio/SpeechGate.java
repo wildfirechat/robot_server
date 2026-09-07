@@ -14,6 +14,8 @@ public class SpeechGate {
     private final double threshold;
     private final int requiredFrames;
     private int hits;
+    /** 已触发状态：一次开口只打断一次，安静一帧后重新武装，避免持续说话期间反复触发 */
+    private boolean triggered;
 
     public SpeechGate(double threshold, int requiredFrames) {
         this.threshold = threshold;
@@ -23,18 +25,24 @@ public class SpeechGate {
     /** 送入一帧，返回 true 表示确认用户正在说话。 */
     public boolean feed(short[] mono) {
         if (Pcm.rms(mono) >= threshold) {
+            if (triggered) {
+                return false;
+            }
             hits++;
             if (hits >= requiredFrames) {
                 hits = 0;
+                triggered = true;
                 return true;
             }
         } else {
             hits = 0;
+            triggered = false;
         }
         return false;
     }
 
     public void reset() {
         hits = 0;
+        triggered = false;
     }
 }

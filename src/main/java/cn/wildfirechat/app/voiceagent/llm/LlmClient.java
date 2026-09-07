@@ -39,9 +39,11 @@ public class LlmClient {
     private final double temperature;
     private final int minSentenceChars;
     private final int maxSentenceChars;
+    /** 单次回复的 token 上限，防止偶发长篇大论拖垮语音对话节奏。<=0 表示不限制 */
+    private final int maxTokens;
 
     public LlmClient(OkHttpClient http, String url, String apiKey, String model,
-                     double temperature, int minSentenceChars, int maxSentenceChars) {
+                     double temperature, int minSentenceChars, int maxSentenceChars, int maxTokens) {
         this.http = http;
         this.url = url;
         this.apiKey = apiKey;
@@ -49,6 +51,7 @@ public class LlmClient {
         this.temperature = temperature;
         this.minSentenceChars = minSentenceChars;
         this.maxSentenceChars = maxSentenceChars;
+        this.maxTokens = maxTokens;
     }
 
     public static class Message {
@@ -80,6 +83,9 @@ public class LlmClient {
         body.addProperty("model", model);
         body.addProperty("stream", true);
         body.addProperty("temperature", temperature);
+        if (maxTokens > 0) {
+            body.addProperty("max_tokens", maxTokens);
+        }
         body.add("messages", arr);
 
         Request.Builder rb = new Request.Builder()
