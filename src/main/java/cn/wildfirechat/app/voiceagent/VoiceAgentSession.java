@@ -119,12 +119,18 @@ public class VoiceAgentSession {
      *
      * VAD 经常把一句话切成好几段（"我想问一下" / "今天几号"），所以不能一段就生成一次。
      * 这里攒着，等 utteranceGapMs 内没有新段了才认为这句话真说完，再去生成。
+     *
+     * @param latencyMs 用户说完到出段的耗时（VAD 判停 + 识别），wf-voice 没带时间戳时为 null
      */
-    public void onAsrSegment(String speaker, String text) {
+    public void onAsrSegment(String speaker, String text, Long latencyMs) {
         if (closed) {
             return;
         }
-        LOG.info("[{}] {} 说：{}", callId, speaker, text);
+        if (latencyMs != null) {
+            LOG.info("[{}] {} 说：{}（说完后 {}ms 出段）", callId, speaker, text, latencyMs);
+        } else {
+            LOG.info("[{}] {} 说：{}", callId, speaker, text);
+        }
         transcript.accept(speaker, text);
         synchronized (pendingLock) {
             if (pending.length() > 0) {
@@ -155,7 +161,7 @@ public class VoiceAgentSession {
         int turn = currentTurn.incrementAndGet();
         // 新一轮开始，上一轮的残留音频（如果有）已经过时，清掉免得新回答排在旧回答后面
         playback.flush();
-        LOG.info("[{}] 用户说完，触发回复：{}", callId, utterance);
+        LOG.info("[{}] 第 {} 轮开始，用户说完，触发回复：{}", callId, turn, utterance);
         synchronized (history) {
             history.add(new LlmClient.Message("user", utterance));
         }
@@ -174,19 +180,24 @@ public class VoiceAgentSession {
         String full = llm.streamChat(messages, () -> alive(turn), sentence -> {
             if (firstSentence[0]) {
                 firstSentence[0] = false;
-                LOG.info("[{}] 首句就绪，用时 {}ms", callId, System.currentTimeMillis() - t0);
+                LOG.info("[{}] 第 {} 轮 LLM 首句就绪，用时 {}ms", callId, turn, System.currentTimeMillis() - t0);
             }
             speak(sentence, turn);
         });
         if (full != null && !full.trim().isEmpty() && alive(turn)) {
+            LOG.info("[{}] 第 {} 轮 LLM 生成完成，共 {} 字，用时 {}ms",
+                    callId, turn, full.trim().length(), System.currentTimeMillis() - t0);
             synchronized (history) {
                 history.add(new LlmClient.Message("assistant", full.trim()));
             }
             transcript.accept(null, full.trim());
         } else if (full != null && full.trim().isEmpty() && alive(turn)) {
             // LLM 请求失败时不能让用户面对死寂，说一句兜底的
-            LOG.warn("[{}] LLM 没有返回内容，播报兜底语", callId);
+            LOG.warn("[{}] 第 {} 轮 LLM 没有返回内容，播报兜底语", callId, turn);
             speak("不好意思，我这边出了点问题，能麻烦再说一遍吗？", turn);
+        } else if (!alive(turn)) {
+            LOG.info("[{}] 第 {} 轮已被打断，已生成内容作废：{}", callId, turn,
+                    full == null ? "" : full.trim());
         }
     }
 
@@ -215,6 +226,7 @@ public class VoiceAgentSession {
     private boolean streamSpeak(String sentence, int turn, PcmFormat fmt) {
         long t0 = System.currentTimeMillis();
         boolean[] firstChunk = {true};
+        boolean[] starvedWarned = {false};
         Resampler[] rs = {null};
         boolean ok = wsTts.synthesize(sentence, (pcm, rate) -> {
             if (!alive(turn)) {
@@ -231,11 +243,20 @@ public class VoiceAgentSession {
             }
             if (firstChunk[0]) {
                 firstChunk[0] = false;
-                LOG.info("[{}] 首块音频就绪，用时 {}ms：{}", callId, System.currentTimeMillis() - t0, sentence);
+                LOG.info("[{}] 第 {} 轮首块音频就绪，用时 {}ms：{}", callId, turn,
+                        System.currentTimeMillis() - t0, sentence);
+            } else if (!starvedWarned[0] && playback.pendingBytes() == 0) {
+                // 合成还在进行但队列已经空了：合成速度跟不上播放，用户正在听静音
+                starvedWarned[0] = true;
+                LOG.warn("[{}] 第 {} 轮播放队列断粮，合成跟不上播放（TTS 太慢）", callId, turn);
             }
             // 队列满就在这儿等播放腾空位，被 flush 叫醒说明本轮已作废
             return playback.offer(Pcm.fromMono(resampled, fmt.channels), () -> alive(turn));
         });
+        if (ok && alive(turn)) {
+            LOG.info("[{}] 第 {} 轮本句合成完成，用时 {}ms，播放队列积压 {}ms：{}", callId, turn,
+                    System.currentTimeMillis() - t0, pendingMs(fmt), sentence);
+        }
         if (!ok && alive(turn)) {
             LOG.warn("[{}] 流式合成通道故障，回退 HTTP 整句合成：{}", callId, sentence);
         }
@@ -264,11 +285,11 @@ public class VoiceAgentSession {
         // 队列满就在这儿等播放腾空位。TTS 比实时快，长回答必然堆积，
         // 这里等一等，比让队列丢掉正在播的句子强得多
         if (playback.offer(Pcm.fromMono(resampled, fmt.channels), () -> alive(turn))) {
-            LOG.debug("[{}] 入队 {}ms 音频，队列剩 {}ms：{}", callId,
+            LOG.debug("[{}] 第 {} 轮入队 {}ms 音频，队列剩 {}ms：{}", callId, turn,
                     resampled.length * 1000L / Math.max(1, fmt.sampleRate),
                     pendingMs(fmt), sentence);
         } else {
-            LOG.info("[{}] 本轮已作废，丢弃这句合成结果：{}", callId, sentence);
+            LOG.info("[{}] 第 {} 轮已作废，丢弃这句合成结果：{}", callId, turn, sentence);
         }
     }
 
@@ -301,14 +322,15 @@ public class VoiceAgentSession {
     public void bargeIn() {
         PcmFormat fmt = callFormat;
         long discardedMs = fmt == null ? -1 : pendingMs(fmt);
+        int cancelled = currentTurn.get();
         currentTurn.incrementAndGet();
         playback.flush();
         // 打断和丢音在听感上是一回事，所以把丢掉多少毫秒打出来：
         // 排查时看这行就知道是真被打断了，还是回声把 SpeechGate 误触了
         if (discardedMs > 0) {
-            LOG.info("[{}] 用户插话，打断当前回复，丢弃未播音频 {}ms", callId, discardedMs);
+            LOG.info("[{}] 用户插话，作废第 {} 轮，丢弃未播音频 {}ms", callId, cancelled, discardedMs);
         } else {
-            LOG.info("[{}] 用户插话，作废在途的生成/合成", callId);
+            LOG.info("[{}] 用户插话，作废第 {} 轮在途的生成/合成", callId, cancelled);
         }
     }
 

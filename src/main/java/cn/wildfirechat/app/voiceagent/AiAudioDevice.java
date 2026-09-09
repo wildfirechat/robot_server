@@ -67,7 +67,7 @@ public class AiAudioDevice implements AudioDevice {
             this.resampler = new Resampler(format.sampleRate, ASR_RATE);
             this.asr = new AsrStreamClient(http, config.getAsrUrl(),
                     callId + "_" + userId, config.getAsrBatchMs(),
-                    text -> session.onAsrSegment(userId, text));
+                    (text, latencyMs) -> session.onAsrSegment(userId, text, latencyMs));
             this.asr.connect();
         }
     }
@@ -143,6 +143,9 @@ public class AiAudioDevice implements AudioDevice {
         try {
             short[] mono = Pcm.toMono(sampleData, nBuffSize, f.channels);
             if (config.isBargeInEnabled() && gate.feed(mono)) {
+                // 打出触发时的能量值，调阈值时看这行就知道是真插话还是噪声误触
+                LOG.info("[{}] 检测到用户开口（RMS={}，阈值={}）",
+                        callId, (int) gate.getLastRms(), (int) config.getBargeInRmsThreshold());
                 session.bargeIn();
             }
             Speaker sp = speakers.get(userId);

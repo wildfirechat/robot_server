@@ -117,7 +117,9 @@ public class WsTtsClient {
                     }
                 } else if (ev instanceof End) {
                     End end = (End) ev;
-                    LOG.debug("TTS 流式合成完成，音频 {}s，耗时 {}s：{}", end.duration, end.cost, text);
+                    LOG.info("TTS 本句合成完成：音频 {}ms，耗时 {}ms（RTF={}）：{}",
+                            (long) (end.duration * 1000), (long) (end.cost * 1000),
+                            end.duration > 0 ? String.format("%.2f", end.cost / end.duration) : "-", text);
                     return true;
                 } else if (ev instanceof Fail) {
                     LOG.error("TTS 流式合成失败（{}）：{}", ((Fail) ev).message, text);

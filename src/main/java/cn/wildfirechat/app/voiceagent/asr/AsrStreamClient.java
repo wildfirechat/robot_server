@@ -14,7 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,7 +38,8 @@ public class AsrStreamClient {
     private final String url;
     private final String clientId;
     private final OkHttpClient http;
-    private final Consumer<String> onText;
+    /** 识别结果回调：(文本, 用户说完到出段的耗时毫秒)，wf-voice 没带时间戳时耗时为 null */
+    private final BiConsumer<String, Long> onText;
     private final int batchBytes;
 
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -53,7 +54,7 @@ public class AsrStreamClient {
      * @param batchMs 攒够多少毫秒的音频再发一帧。发太碎会有大量小包开销，
      *                攒太久会拖慢 VAD 的断句判定，默认 60ms（约 2 个 VAD chunk）。
      */
-    public AsrStreamClient(OkHttpClient http, String url, String clientId, int batchMs, Consumer<String> onText) {
+    public AsrStreamClient(OkHttpClient http, String url, String clientId, int batchMs, BiConsumer<String, Long> onText) {
         this.http = http;
         this.url = url;
         this.clientId = clientId;
@@ -144,8 +145,18 @@ public class AsrStreamClient {
         if (content.isEmpty()) {
             return;
         }
+        // 段消息带 [开始的 unix 毫秒+时长秒]，据此算出"用户说完 → 出段"的耗时，
+        // 即 VAD 判停 + 识别这一段总共花了多久
+        Long latencyMs = null;
+        if (m.matches()) {
+            try {
+                long speechEnd = Long.parseLong(m.group(1)) + (long) (Double.parseDouble(m.group(2)) * 1000);
+                latencyMs = Math.max(0, System.currentTimeMillis() - speechEnd);
+            } catch (NumberFormatException ignored) {
+            }
+        }
         try {
-            onText.accept(content);
+            onText.accept(content, latencyMs);
         } catch (Exception e) {
             LOG.error("处理识别结果出错", e);
         }
