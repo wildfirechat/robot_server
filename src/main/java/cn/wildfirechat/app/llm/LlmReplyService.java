@@ -1,0 +1,137 @@
+package cn.wildfirechat.app.llm;
+
+import cn.wildfirechat.app.RobotConfig;
+import cn.wildfirechat.app.chat.ChatHistoryService;
+import cn.wildfirechat.app.im.ImStreamingSender;
+import cn.wildfirechat.app.im.MessageSender;
+import cn.wildfirechat.pojos.Conversation;
+import cn.wildfirechat.pojos.MessagePayload;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 大模型回复服务：
+ * 1. 保存用户消息到数据库；
+ * 2. 查询该会话最近 N 条历史（N 可配置，默认 30）；
+ * 3. 组装 system + 历史消息调用大模型；
+ * 4. 用流式文本消息把结果回复给用户；
+ * 5. 保存机器人的回答，形成下一轮对话的上下文。
+ */
+@Service
+public class LlmReplyService {
+    private static final Logger LOG = LoggerFactory.getLogger(LlmReplyService.class);
+
+    private static final String DISABLED_REPLY = "AI 回复功能尚未开启，请联系管理员开启配置 robot.llm.enabled。";
+    private static final String UNAVAILABLE_REPLY = "抱歉，AI 服务暂时不可用，请稍后再试。";
+    private static final String EMPTY_QUESTION_REPLY = "你想问点什么呢？";
+
+    private final OpenAiLlmClient llmClient;
+    private final ChatHistoryService chatHistoryService;
+    private final RobotConfig robotConfig;
+
+    @Autowired
+    public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService, RobotConfig robotConfig) {
+        this.llmClient = llmClient;
+        this.chatHistoryService = chatHistoryService;
+        this.robotConfig = robotConfig;
+    }
+
+    /**
+     * 使用大模型回复用户消息。
+     *
+     * @param conversation  会话（私聊时 target 为对方用户ID，群聊时为群ID）
+     * @param sender        发消息的用户ID
+     * @param userText      用户消息内容（已去掉 @机器人 的前缀）
+     * @param replyMessageId 需要以回复方式发送时传入原消息ID，否则传 0
+     * @param messageSender IM 消息发送器
+     */
+    public void reply(Conversation conversation, String sender, String userText,
+                      long replyMessageId, MessageSender messageSender) {
+        RobotConfig.Llm llm = robotConfig.getLlm();
+        if (!llm.isEnabled()) {
+            LOG.info("大模型回复未开启，忽略本次消息");
+            sendText(messageSender, conversation, replyMessageId, DISABLED_REPLY);
+            return;
+        }
+        if (userText == null || userText.trim().isEmpty()) {
+            sendText(messageSender, conversation, replyMessageId, EMPTY_QUESTION_REPLY);
+            return;
+        }
+
+        int convType = conversation.getType();
+        String convTarget = conversation.getTarget();
+
+        boolean saved = chatHistoryService.saveUserMessage(convType, convTarget, sender, userText);
+        List<LlmMessage> messages = buildMessages(convType, convTarget, userText, saved);
+        LOG.info("调用大模型, convType:{}, convTarget:{}, 携带消息数:{}", convType, convTarget, messages.size());
+
+        ImStreamingSender streamingSender = new ImStreamingSender(
+                messageSender, conversation, replyMessageId, llm.getStreamIntervalMs());
+        try {
+            String answer = llmClient.chat(messages, streamingSender);
+            if (!llm.isStream() && answer != null && !answer.isEmpty()) {
+                // 非流式接口：把完整回答交给流式发送器，走同样的分片/结束消息逻辑
+                streamingSender.onDelta(answer);
+            }
+            if (streamingSender.getFullText().isEmpty()) {
+                LOG.warn("大模型返回内容为空, convTarget:{}", convTarget);
+                sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY);
+                return;
+            }
+            streamingSender.finish();
+            chatHistoryService.saveAssistantMessage(convType, convTarget, streamingSender.getFullText());
+        } catch (Exception e) {
+            LOG.error("大模型回复失败, convType:{}, convTarget:{}", convType, convTarget, e);
+            if (streamingSender.hasSent()) {
+                // 已输出部分内容，补发结束消息，避免客户端一直显示「生成中」
+                try {
+                    streamingSender.finish();
+                } catch (Exception finishError) {
+                    LOG.warn("发送流式结束消息失败: {}", finishError.getMessage());
+                }
+            } else {
+                sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY);
+            }
+        }
+    }
+
+    /**
+     * 组装 system + 最近历史消息。历史中包含刚落库的当前用户消息；
+     * 若保存失败或历史为空，则至少把当前消息带上。
+     */
+    private List<LlmMessage> buildMessages(int convType, String convTarget, String userText, boolean userMessageSaved) {
+        RobotConfig.Llm llm = robotConfig.getLlm();
+        List<LlmMessage> messages = new ArrayList<>();
+        if (llm.getSystemPrompt() != null && !llm.getSystemPrompt().trim().isEmpty()) {
+            messages.add(new LlmMessage(LlmMessage.ROLE_SYSTEM, llm.getSystemPrompt()));
+        }
+        List<LlmMessage> history = chatHistoryService.loadHistory(convType, convTarget);
+        messages.addAll(history);
+        int historyCount = messages.size() - (hasSystemPrompt(llm) ? 1 : 0);
+        if (!userMessageSaved || historyCount == 0) {
+            messages.add(new LlmMessage(LlmMessage.ROLE_USER, userText));
+        }
+        return messages;
+    }
+
+    private static boolean hasSystemPrompt(RobotConfig.Llm llm) {
+        return llm.getSystemPrompt() != null && !llm.getSystemPrompt().trim().isEmpty();
+    }
+
+    private static void sendText(MessageSender messageSender, Conversation conversation,
+                                 long replyMessageId, String text) {
+        MessagePayload payload = new MessagePayload();
+        payload.setType(1);
+        payload.setSearchableContent(text);
+        try {
+            messageSender.send(conversation, replyMessageId, payload);
+        } catch (Exception e) {
+            LOG.error("发送回复消息失败: {}", e.getMessage(), e);
+        }
+    }
+}
