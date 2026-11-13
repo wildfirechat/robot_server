@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.mock.env.MockEnvironment;
 
 import java.util.Map;
 
@@ -15,8 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ConfigServiceTest {
-    private static final String KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
-
     private RobotConfig robotConfig;
     private AppConfigRepository repository;
     private SecretCipher secretCipher;
@@ -30,10 +27,10 @@ public class ConfigServiceTest {
         dataSource.setUsername("sa");
         dataSource.setPassword("");
 
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
         robotConfig = new RobotConfig();
-        repository = new AppConfigRepository(new JdbcTemplate(dataSource));
-        MockEnvironment environment = new MockEnvironment().withProperty(SecretCipher.ENV_KEY, KEY);
-        secretCipher = new SecretCipher(environment);
+        repository = new AppConfigRepository(jdbcTemplate);
+        secretCipher = new SecretCipher(jdbcTemplate);
         configService = new ConfigService(repository, robotConfig, secretCipher);
         configService.init();
     }

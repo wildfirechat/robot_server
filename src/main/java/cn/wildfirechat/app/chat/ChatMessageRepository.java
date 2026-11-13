@@ -111,6 +111,14 @@ public class ChatMessageRepository {
     }
 
     /**
+     * 删除指定时间之前的聊天记录，用于数据保留策略。
+     */
+    public int deleteBefore(long cutoffMillis) {
+        return jdbcTemplate.update("DELETE FROM chat_message WHERE send_time < ?",
+                new java.sql.Timestamp(cutoffMillis));
+    }
+
+    /**
      * 查询某个会话最近的若干条记录，返回值按时间正序排列（最早的在前）。
      */
     public List<ChatMessage> findRecent(int convType, String convTarget, int limit) {

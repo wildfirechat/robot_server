@@ -22,8 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:admin_security;DB_CLOSE_DELAY=-1",
-        "ROBOT_ADMIN_PASSWORD=AdminPass12345",
-        "ROBOT_CONFIG_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+        "ROBOT_ADMIN_PASSWORD=AdminPass12345"
 })
 @AutoConfigureMockMvc
 public class AdminSecurityTest {

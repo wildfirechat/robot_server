@@ -10,6 +10,7 @@ public class AdminConfigForm {
     private String imName;
     private String imUrl;
     private String imSecret;
+    private int retentionDays;
 
     private boolean llmEnabled;
     private String llmBaseUrl;
@@ -30,6 +31,7 @@ public class AdminConfigForm {
         form.setImName(config.getIm_name());
         form.setImUrl(config.getIm_url());
         form.setImSecret("");
+        form.setRetentionDays(config.getRetentionDays());
         RobotConfig.Llm llm = config.getLlm();
         form.setLlmEnabled(llm.isEnabled());
         form.setLlmBaseUrl(llm.getBaseUrl());
@@ -76,6 +78,14 @@ public class AdminConfigForm {
 
     public void setImSecret(String imSecret) {
         this.imSecret = imSecret;
+    }
+
+    public int getRetentionDays() {
+        return retentionDays;
+    }
+
+    public void setRetentionDays(int retentionDays) {
+        this.retentionDays = retentionDays;
     }
 
     public boolean isLlmEnabled() {

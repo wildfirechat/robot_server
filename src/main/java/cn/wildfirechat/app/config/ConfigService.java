@@ -25,6 +25,7 @@ public class ConfigService {
     static final String IM_NAME = "robot.im_name";
     static final String IM_URL = "robot.im_url";
     static final String IM_SECRET = "robot.im_secret";
+    static final String RETENTION_DAYS = "robot.data.retention_days";
 
     static final String LLM_ENABLED = "robot.llm.enabled";
     static final String LLM_BASE_URL = "robot.llm.base_url";
@@ -90,6 +91,7 @@ public class ConfigService {
         values.put(IM_NAME, trim(form.getImName()));
         values.put(IM_URL, form.getImUrl().trim());
         values.put(IM_SECRET, secretCipher.encrypt(imSecret));
+        values.put(RETENTION_DAYS, String.valueOf(form.getRetentionDays()));
         values.put(LLM_ENABLED, String.valueOf(form.isLlmEnabled()));
         values.put(LLM_BASE_URL, trim(form.getLlmBaseUrl()));
         values.put(LLM_API_KEY, secretCipher.encrypt(apiKey));
@@ -144,7 +146,8 @@ public class ConfigService {
         if (!Double.isFinite(form.getLlmTemperature()) || form.getLlmTemperature() < 0 || form.getLlmTemperature() > 2) {
             throw new IllegalArgumentException("温度必须在 0~2 之间");
         }
-        checkRange(form.getLlmMaxTokens(), 1, 131072, "最大 token 数");
+        checkRange(form.getRetentionDays(), 0, 3650, "数据保留天数");
+        checkRange(form.getLlmMaxTokens(), 1, 16384, "最大 token 数");
         checkRange(form.getLlmTimeoutSeconds(), 1, 600, "超时时间");
         checkRange(form.getLlmHistoryLimit(), 1, 500, "历史消息条数");
         if (form.getLlmStreamIntervalMs() < 0 || form.getLlmStreamIntervalMs() > 60000) {
@@ -186,6 +189,7 @@ public class ConfigService {
         robotConfig.im_name = value(values, IM_NAME, robotConfig.im_name);
         robotConfig.im_url = value(values, IM_URL, robotConfig.im_url);
         robotConfig.im_secret = secretCipher.decrypt(value(values, IM_SECRET, robotConfig.im_secret));
+        robotConfig.retentionDays = intValue(values, RETENTION_DAYS, robotConfig.retentionDays);
 
         RobotConfig.Llm llm = robotConfig.getLlm();
         llm.setEnabled(boolValue(values, LLM_ENABLED, llm.isEnabled()));
@@ -209,6 +213,7 @@ public class ConfigService {
         values.put(IM_NAME, defaults.im_name);
         values.put(IM_URL, defaults.im_url);
         values.put(IM_SECRET, defaults.im_secret);
+        values.put(RETENTION_DAYS, String.valueOf(defaults.retentionDays));
         values.put(LLM_ENABLED, String.valueOf(llm.isEnabled()));
         values.put(LLM_BASE_URL, llm.getBaseUrl());
         values.put(LLM_API_KEY, llm.getApiKey());

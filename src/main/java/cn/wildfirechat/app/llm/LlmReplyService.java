@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 大模型回复服务：
@@ -32,10 +33,18 @@ public class LlmReplyService {
     private static final String UNAVAILABLE_REPLY = "抱歉，AI 服务暂时不可用，请稍后再试。";
     private static final String EMPTY_QUESTION_REPLY = "你想问点什么呢？";
 
+    /** 单条用户消息最大字符数 */
+    private static final int MAX_USER_TEXT_CHARS = 8000;
+    /** 单次请求的 system + 历史 + 当前消息总字符数上限 */
+    private static final int MAX_PROMPT_CHARS = 32000;
+    /** 会话串行化锁数量，避免同一会话并发调用大模型 */
+    private static final int CONVERSATION_LOCK_COUNT = 64;
+
     private final OpenAiLlmClient llmClient;
     private final ChatHistoryService chatHistoryService;
     private final RobotConfig robotConfig;
     private final LlmCallRepository llmCallRepository;
+    private final ReentrantLock[] conversationLocks = new ReentrantLock[CONVERSATION_LOCK_COUNT];
 
     @Autowired
     public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService,
@@ -44,6 +53,9 @@ public class LlmReplyService {
         this.chatHistoryService = chatHistoryService;
         this.robotConfig = robotConfig;
         this.llmCallRepository = llmCallRepository;
+        for (int i = 0; i < conversationLocks.length; i++) {
+            conversationLocks[i] = new ReentrantLock(true);
+        }
     }
 
     /**
@@ -68,12 +80,25 @@ public class LlmReplyService {
             return;
         }
 
+        String text = limitUserText(userText);
         int convType = conversation.getType();
         String convTarget = conversation.getTarget();
+        ReentrantLock lock = conversationLock(convType, convTarget);
+        lock.lock();
+        try {
+            doReply(conversation, sender, text, replyMessageId, messageSender, llm, convType, convTarget);
+        } finally {
+            lock.unlock();
+        }
+    }
 
+    private void doReply(Conversation conversation, String sender, String userText, long replyMessageId,
+                         MessageSender messageSender, RobotConfig.Llm llm, int convType, String convTarget) {
         boolean saved = chatHistoryService.saveUserMessage(convType, convTarget, sender, userText);
         List<LlmMessage> messages = buildMessages(convType, convTarget, userText, saved);
-        LOG.info("调用大模型, convType:{}, convTarget:{}, 携带消息数:{}", convType, convTarget, messages.size());
+        messages = trimPrompt(messages);
+        LOG.info("调用大模型, convType:{}, convTarget:{}, 携带消息数:{}, prompt字符数:{}",
+                convType, convTarget, messages.size(), countChars(messages));
 
         long startedAt = System.currentTimeMillis();
         String model = llm.getModel();
@@ -86,7 +111,6 @@ public class LlmReplyService {
         try {
             String answer = llmClient.chat(messages, streamingSender);
             if (!llm.isStream() && answer != null && !answer.isEmpty()) {
-                // 非流式接口：把完整回答交给流式发送器，走同样的分片/结束消息逻辑
                 streamingSender.onDelta(answer);
             }
             if (streamingSender.getFullText().isEmpty()) {
@@ -118,6 +142,19 @@ public class LlmReplyService {
         }
     }
 
+    private ReentrantLock conversationLock(int convType, String convTarget) {
+        int hash = (convType + "|" + (convTarget == null ? "" : convTarget)).hashCode();
+        return conversationLocks[Math.floorMod(hash, conversationLocks.length)];
+    }
+
+    private static String limitUserText(String userText) {
+        if (userText.length() <= MAX_USER_TEXT_CHARS) {
+            return userText;
+        }
+        LOG.warn("用户消息过长已截断, 原长度:{}, 上限:{}", userText.length(), MAX_USER_TEXT_CHARS);
+        return userText.substring(0, MAX_USER_TEXT_CHARS);
+    }
+
     /**
      * 组装 system + 最近历史消息。历史中包含刚落库的当前用户消息；
      * 若保存失败或历史为空，则至少把当前消息带上。
@@ -137,14 +174,38 @@ public class LlmReplyService {
         return messages;
     }
 
+    /**
+     * 裁剪过大的 prompt：保留 system 和当前消息，从最老的历史开始删除。
+     */
+    private static List<LlmMessage> trimPrompt(List<LlmMessage> messages) {
+        int total = countChars(messages);
+        if (total <= MAX_PROMPT_CHARS) {
+            return messages;
+        }
+        int start = !messages.isEmpty()
+                && LlmMessage.ROLE_SYSTEM.equals(messages.get(0).getRole()) ? 1 : 0;
+        int removed = 0;
+        while (total > MAX_PROMPT_CHARS && messages.size() > start + 1) {
+            LlmMessage message = messages.remove(start);
+            total -= contentLength(message);
+            removed++;
+        }
+        if (removed > 0) {
+            LOG.warn("历史消息过大，已裁剪 {} 条最老记录, prompt字符数:{}", removed, total);
+        }
+        return messages;
+    }
+
     private static int countChars(List<LlmMessage> messages) {
         int total = 0;
         for (LlmMessage message : messages) {
-            if (message.getContent() != null) {
-                total += message.getContent().length();
-            }
+            total += contentLength(message);
         }
         return total;
+    }
+
+    private static int contentLength(LlmMessage message) {
+        return message.getContent() == null ? 0 : message.getContent().length();
     }
 
     private static boolean hasSystemPrompt(RobotConfig.Llm llm) {

@@ -68,7 +68,7 @@
                     <input type="number" th:field="*{llmTemperature}" step="0.1" min="0" max="2">
                 </label>
                 <label>最大 token 数
-                    <input type="number" th:field="*{llmMaxTokens}" min="1" max="131072">
+                    <input type="number" th:field="*{llmMaxTokens}" min="1" max="16384">
                 </label>
                 <label>请求超时（秒）
                     <input type="number" th:field="*{llmTimeoutSeconds}" min="1" max="600">
@@ -84,6 +84,16 @@
                 <label class="checkbox">
                     <input type="checkbox" th:field="*{llmStream}">
                     使用流式接口
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>数据保留</legend>
+            <div class="form-grid">
+                <label>历史数据保留天数
+                    <input type="number" th:field="*{retentionDays}" min="0" max="3650">
+                    <span class="help">0 表示不自动清理；大于 0 时每天凌晨 3:30 清理更早的聊天记录和大模型调用记录</span>
                 </label>
             </div>
         </fieldset>

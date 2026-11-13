@@ -114,7 +114,8 @@ public class StatsRepository {
 
     public List<RecentMessage> recentMessages(int limit) {
         return jdbcTemplate.query(
-                "SELECT conv_type, conv_target, msg_role, content, send_time FROM chat_message "
+                "SELECT conv_type, conv_target, msg_role, SUBSTRING(content, 1, 200) AS content, send_time "
+                        + "FROM chat_message "
                         + "ORDER BY id DESC LIMIT ?",
                 (rs, rowNum) -> new RecentMessage(
                         rs.getInt("conv_type"),

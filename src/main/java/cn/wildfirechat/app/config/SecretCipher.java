@@ -2,49 +2,46 @@ package cn.wildfirechat.app.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
+import java.sql.Timestamp;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * 配置敏感项（机器人 Secret、大模型 API Key）的静态加密。
- * 使用 AES-256-GCM，密钥优先取环境变量 ROBOT_CONFIG_KEY（Base64 的 32 字节），
- * 否则从 data/config.key 读取；文件不存在时生成并设置为 600 权限。
+ * 使用 AES-256-GCM；加密密钥保存在数据库 app_secret 表中，首次启动自动生成。
+ * 多实例共享同一数据库时会使用同一把密钥。
  */
 @Component
 public class SecretCipher {
     private static final Logger LOG = LoggerFactory.getLogger(SecretCipher.class);
 
-    static final String ENV_KEY = "ROBOT_CONFIG_KEY";
-    static final String ENV_KEY_FILE = "ROBOT_CONFIG_KEY_FILE";
-    static final String DEFAULT_KEY_FILE = "data/config.key";
-
+    static final String KEY_NAME = "config.encryption.key";
+    private static final String TABLE_NAME = "app_secret";
     private static final String PREFIX = "enc:v1:";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int KEY_BYTES = 32;
     private static final int IV_BYTES = 12;
     private static final int TAG_BITS = 128;
 
+    private final JdbcTemplate jdbcTemplate;
     private final SecretKeySpec key;
     private final SecureRandom random = new SecureRandom();
 
-    public SecretCipher(Environment environment) {
-        this.key = new SecretKeySpec(loadKey(environment), "AES");
+    public SecretCipher(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+        initSchema();
+        this.key = new SecretKeySpec(loadOrCreateKey(), "AES");
     }
 
     /**
@@ -88,67 +85,59 @@ public class SecretCipher {
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
             return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new IllegalStateException("配置解密失败，请检查 ROBOT_CONFIG_KEY 或 data/config.key 是否与数据库匹配", e);
+            throw new IllegalStateException("配置解密失败，请检查数据库 app_secret 表中的加密密钥是否与密文匹配", e);
         }
     }
 
-    private static byte[] loadKey(Environment environment) {
-        String envKey = environment.getProperty(ENV_KEY);
-        if (StringUtils.hasText(envKey)) {
-            byte[] bytes = decodeKey(envKey.trim(), ENV_KEY);
-            LOG.info("配置加密使用环境变量 {}", ENV_KEY);
-            return bytes;
-        }
+    private void initSchema() {
+        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + TABLE_NAME + " ("
+                + "secret_name VARCHAR(64) PRIMARY KEY,"
+                + "secret_value VARCHAR(256) NOT NULL,"
+                + "created_time TIMESTAMP NOT NULL)");
+    }
 
-        String configuredPath = environment.getProperty(ENV_KEY_FILE, DEFAULT_KEY_FILE);
-        Path path = Paths.get(configuredPath).toAbsolutePath().normalize();
-        if (Files.exists(path)) {
-            byte[] bytes = readKeyFile(path);
-            LOG.info("配置加密使用密钥文件 {}", path);
-            return bytes;
+    private byte[] loadOrCreateKey() {
+        String stored = findKey();
+        if (stored != null) {
+            return decodeKey(stored);
         }
 
         byte[] generated = new byte[KEY_BYTES];
-        new SecureRandom().nextBytes(generated);
+        random.nextBytes(generated);
+        String encoded = Base64.getEncoder().encodeToString(generated);
         try {
-            Path parent = path.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            Files.write(path, Base64.getEncoder().encode(generated),
-                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            try {
-                Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
-            } catch (UnsupportedOperationException ignored) {
-                // Windows 等不支持 POSIX 权限时忽略
-            }
-            LOG.warn("已生成配置加密密钥文件 {}，请妥善备份；密钥丢失将无法解密已保存的 Secret/API Key", path);
+            jdbcTemplate.update("INSERT INTO " + TABLE_NAME
+                            + " (secret_name, secret_value, created_time) VALUES (?, ?, ?)",
+                    KEY_NAME, encoded, new Timestamp(System.currentTimeMillis()));
+            LOG.warn("已在数据库 {} 表中生成配置加密密钥，请做好数据库备份", TABLE_NAME);
             return generated;
-        } catch (FileAlreadyExistsException e) {
-            return readKeyFile(path);
-        } catch (IOException e) {
-            throw new IllegalStateException("生成配置加密密钥失败: " + path, e);
+        } catch (DuplicateKeyException e) {
+            // 多实例同时首次启动时，另一个实例已经写入密钥
+            String existing = findKey();
+            if (existing == null) {
+                throw new IllegalStateException("读取配置加密密钥失败（并发初始化冲突）", e);
+            }
+            return decodeKey(existing);
         }
     }
 
-    private static byte[] readKeyFile(Path path) {
-        try {
-            String value = new String(Files.readAllBytes(path), StandardCharsets.UTF_8).trim();
-            return decodeKey(value, path.toString());
-        } catch (IOException e) {
-            throw new IllegalStateException("读取配置加密密钥失败: " + path, e);
-        }
+    private String findKey() {
+        List<String> values = jdbcTemplate.query(
+                "SELECT secret_value FROM " + TABLE_NAME + " WHERE secret_name = ?",
+                (rs, rowNum) -> rs.getString(1),
+                KEY_NAME);
+        return values.isEmpty() ? null : values.get(0);
     }
 
-    private static byte[] decodeKey(String base64, String source) {
+    private static byte[] decodeKey(String base64) {
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
             if (bytes.length != KEY_BYTES) {
-                throw new IllegalStateException("配置加密密钥必须是 Base64 编码的 32 字节，来源: " + source);
+                throw new IllegalStateException("配置加密密钥必须是 Base64 编码的 32 字节");
             }
             return bytes;
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("配置加密密钥不是合法的 Base64，来源: " + source, e);
+            throw new IllegalStateException("配置加密密钥不是合法的 Base64", e);
         }
     }
 }

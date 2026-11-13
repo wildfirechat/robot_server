@@ -56,6 +56,16 @@ public class LlmCallRepository {
         } catch (Exception e) {
             LOG.debug("大模型调用记录索引已存在: {}", e.getMessage());
         }
+        try {
+            jdbcTemplate.execute("CREATE INDEX idx_llm_call_success_time ON llm_call (success, start_time)");
+        } catch (Exception e) {
+            LOG.debug("大模型调用成功率索引已存在: {}", e.getMessage());
+        }
+    }
+
+    public int deleteBefore(long cutoffMillis) {
+        return jdbcTemplate.update("DELETE FROM llm_call WHERE start_time < ?",
+                new Timestamp(cutoffMillis));
     }
 
     public long count() {

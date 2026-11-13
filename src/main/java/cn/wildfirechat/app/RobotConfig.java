@@ -12,6 +12,8 @@ public class RobotConfig {
     public volatile String im_secret = "";
     public volatile String im_id = "FireRobot";
     public volatile String im_name = "小火";
+    /** 聊天记录/大模型调用记录保留天数，0 表示不自动清理 */
+    public volatile int retentionDays = 0;
 
     private final Llm llm = new Llm();
 
@@ -45,6 +47,14 @@ public class RobotConfig {
 
     public void setIm_secret(String im_secret) {
         this.im_secret = im_secret;
+    }
+
+    public int getRetentionDays() {
+        return retentionDays;
+    }
+
+    public void setRetentionDays(int retentionDays) {
+        this.retentionDays = retentionDays;
     }
 
     public Llm getLlm() {

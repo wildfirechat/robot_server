@@ -9,6 +9,7 @@ import cn.wildfirechat.app.stats.LlmCallRepository;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.AfterEach;
@@ -154,6 +155,41 @@ public class LlmReplyServiceTest {
         assertEquals(1, sender.messages.size());
         assertTrue(sender.messages.get(0).payload.getSearchableContent().contains("未开启"));
         assertTrue(repository.findRecent(0, "user1", 5).isEmpty());
+    }
+
+    @Test
+    public void longInputAndHistoryAreTrimmedBeforeCallingLlm() throws Exception {
+        for (int i = 0; i < 40; i++) {
+            ChatMessage message = new ChatMessage();
+            message.setConvType(0);
+            message.setConvTarget("user1");
+            message.setSender(i % 2 == 0 ? "user1" : "FireRobot");
+            message.setRole(i % 2 == 0 ? ChatMessage.ROLE_USER : ChatMessage.ROLE_ASSISTANT);
+            message.setContent("历史" + i + "x".repeat(1000));
+            message.setSendTime(i);
+            assertTrue(repository.insert(message));
+        }
+        server.responseBody = "data: {\"choices\":[{\"delta\":{\"content\":\"答\"}}]}\n\n"
+                + "data: [DONE]\n\n";
+
+        String longInput = "y".repeat(10000);
+        replyService.reply(conversation(), "user1", longInput, 0, sender);
+
+        JsonObject request = JsonParser.parseString(server.requestBodies.get(0)).getAsJsonObject();
+        JsonArray messages = request.getAsJsonArray("messages");
+        int promptChars = 0;
+        for (JsonElement element : messages) {
+            promptChars += element.getAsJsonObject().get("content").getAsString().length();
+        }
+        assertTrue(promptChars <= 32000, "promptChars=" + promptChars);
+        JsonObject last = messages.get(messages.size() - 1).getAsJsonObject();
+        assertEquals("user", last.get("role").getAsString());
+        assertEquals(8000, last.get("content").getAsString().length());
+
+        List<ChatMessage> recent = repository.findRecent(0, "user1", 2);
+        assertEquals(2, recent.size());
+        assertEquals(ChatMessage.ROLE_USER, recent.get(0).getRole());
+        assertEquals(8000, recent.get(0).getContent().length());
     }
 
     private Conversation conversation() {

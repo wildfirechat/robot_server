@@ -1,11 +1,9 @@
 package cn.wildfirechat.app.config;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.mock.env.MockEnvironment;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -13,11 +11,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SecretCipherTest {
-    private static final String KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    public void setUp() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName("org.h2.Driver");
+        dataSource.setUrl("jdbc:h2:mem:secret_cipher_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
+        dataSource.setUsername("sa");
+        dataSource.setPassword("");
+        jdbcTemplate = new JdbcTemplate(dataSource);
+    }
 
     @Test
     public void encryptAndDecryptRoundTrip() {
-        SecretCipher cipher = new SecretCipher(new MockEnvironment().withProperty(SecretCipher.ENV_KEY, KEY));
+        SecretCipher cipher = new SecretCipher(jdbcTemplate);
 
         String encrypted = cipher.encrypt("my-secret");
         assertTrue(encrypted.startsWith("enc:v1:"));
@@ -29,28 +37,29 @@ public class SecretCipherTest {
     }
 
     @Test
-    public void decryptWithDifferentKeyFails() {
-        SecretCipher cipher = new SecretCipher(new MockEnvironment().withProperty(SecretCipher.ENV_KEY, KEY));
-        String encrypted = cipher.encrypt("my-secret");
+    public void keyIsGeneratedAndReusedFromDatabase() {
+        SecretCipher first = new SecretCipher(jdbcTemplate);
+        String encrypted = first.encrypt("persisted-secret");
 
-        String otherKey = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU=";
-        SecretCipher other = new SecretCipher(new MockEnvironment().withProperty(SecretCipher.ENV_KEY, otherKey));
-        assertThrows(IllegalStateException.class, () -> other.decrypt(encrypted));
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM app_secret", Long.class);
+        assertEquals(1, count);
+
+        SecretCipher second = new SecretCipher(jdbcTemplate);
+        assertEquals("persisted-secret", second.decrypt(encrypted));
     }
 
     @Test
-    public void generatesKeyFileWhenNoEnvKey(@TempDir Path tempDir) throws Exception {
-        Path keyFile = tempDir.resolve("config.key");
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty(SecretCipher.ENV_KEY_FILE, keyFile.toString());
+    public void decryptWithDifferentDatabaseKeyFails() {
+        SecretCipher cipher = new SecretCipher(jdbcTemplate);
+        String encrypted = cipher.encrypt("my-secret");
 
-        SecretCipher cipher = new SecretCipher(environment);
-        String encrypted = cipher.encrypt("secret-value");
+        DriverManagerDataSource otherSource = new DriverManagerDataSource();
+        otherSource.setDriverClassName("org.h2.Driver");
+        otherSource.setUrl("jdbc:h2:mem:secret_cipher_other_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
+        otherSource.setUsername("sa");
+        otherSource.setPassword("");
+        SecretCipher other = new SecretCipher(new JdbcTemplate(otherSource));
 
-        assertTrue(Files.exists(keyFile));
-        assertTrue(Files.size(keyFile) > 0);
-
-        SecretCipher reloaded = new SecretCipher(environment);
-        assertEquals("secret-value", reloaded.decrypt(encrypted));
+        assertThrows(IllegalStateException.class, () -> other.decrypt(encrypted));
     }
 }

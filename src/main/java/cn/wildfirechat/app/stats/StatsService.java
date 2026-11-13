@@ -14,14 +14,39 @@ import java.util.Map;
 @Service
 public class StatsService {
     private static final int PREVIEW_LENGTH = 80;
+    private static final long CACHE_TTL_MS = 3000;
 
     private final StatsRepository repository;
+    private final Object cacheLock = new Object();
+    private volatile DashboardStats cachedStats;
+    private volatile long cachedAt;
 
     public StatsService(StatsRepository repository) {
         this.repository = repository;
     }
 
+    /**
+     * 概览统计涉及多条聚合查询，做 3 秒缓存，避免后台频繁刷新时反复扫表。
+     */
     public DashboardStats load() {
+        long now = System.currentTimeMillis();
+        DashboardStats snapshot = cachedStats;
+        if (snapshot != null && now - cachedAt < CACHE_TTL_MS) {
+            return snapshot;
+        }
+        synchronized (cacheLock) {
+            now = System.currentTimeMillis();
+            if (cachedStats != null && now - cachedAt < CACHE_TTL_MS) {
+                return cachedStats;
+            }
+            DashboardStats stats = buildStats();
+            cachedStats = stats;
+            cachedAt = System.currentTimeMillis();
+            return stats;
+        }
+    }
+
+    private DashboardStats buildStats() {
         LocalDate today = LocalDate.now();
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime weekStart = today.minusDays(6).atStartOfDay();
