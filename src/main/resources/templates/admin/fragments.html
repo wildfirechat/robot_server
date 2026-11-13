@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title} + ' - 机器人管理后台'">机器人管理后台</title>
+    <link rel="stylesheet" th:href="@{/admin.css}">
+</head>
+<body>
+<header th:fragment="nav" class="topbar">
+    <div class="topbar-inner">
+        <a class="brand" th:href="@{/admin}">机器人管理后台</a>
+        <nav class="nav">
+            <a th:href="@{/admin}">概览</a>
+            <a th:href="@{/admin/config}">配置管理</a>
+            <a th:href="@{/admin/password}">修改密码</a>
+            <form th:action="@{/admin/logout}" method="post" class="inline-form">
+                <button type="submit" class="link-button">退出登录</button>
+            </form>
+        </nav>
+    </div>
+</header>
+</body>
+</html>

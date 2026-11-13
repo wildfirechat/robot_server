@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('配置管理')}"></head>
+<body>
+<header th:replace="~{admin/fragments :: nav}"></header>
+<main class="container">
+    <h1>配置管理</h1>
+    <p class="subtle">所有配置保存在数据库中，保存后立即生效，无需重启服务。密钥类字段不会回显，留空表示保持原值。</p>
+
+    <form th:action="@{/admin/config}" th:object="${form}" method="post" class="form panel">
+        <div class="alert error" th:if="${error}" th:text="${error}">配置错误</div>
+        <div class="alert ok" th:if="${message}" th:text="${message}">配置已保存</div>
+
+        <fieldset>
+            <legend>机器人</legend>
+            <div class="form-grid">
+                <label>机器人 ID
+                    <input type="text" th:field="*{imId}" maxlength="64" required>
+                </label>
+                <label>机器人名称
+                    <input type="text" th:field="*{imName}" maxlength="64">
+                </label>
+                <label>IM 服务地址
+                    <input type="text" th:field="*{imUrl}" maxlength="500" placeholder="http://im-server" required>
+                    <span class="help">IM 服务端地址，例如 http://127.0.0.1 或 https://im.example.com</span>
+                </label>
+                <label>机器人 Secret
+                    <input type="password" th:field="*{imSecret}" autocomplete="new-password"
+                           th:placeholder="${imSecretConfigured ? '已配置，留空则不修改' : '请输入机器人 secret'}">
+                    <span class="help">机器人密钥，不是 admin 的 secret；留空表示保持原值</span>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>大模型</legend>
+            <label class="checkbox">
+                <input type="checkbox" th:field="*{llmEnabled}">
+                启用大模型自动回复
+            </label>
+
+            <div class="form-grid">
+                <label>接口地址
+                    <input type="text" th:field="*{llmBaseUrl}" maxlength="500"
+                           placeholder="https://api.deepseek.com" required>
+                    <span class="help">OpenAI 兼容地址，程序自动拼接 /chat/completions；也可直接填写完整地址</span>
+                </label>
+                <label>模型名称
+                    <input type="text" th:field="*{llmModel}" maxlength="128" placeholder="deepseek-chat" required>
+                </label>
+                <label>API Key
+                    <input type="password" th:field="*{llmApiKey}" autocomplete="new-password"
+                           th:placeholder="${llmApiKeyConfigured ? '已配置，留空则不修改' : '本地模型可留空'}">
+                    <span class="help">留空表示保持原值；本地 vLLM/Ollama 可留空</span>
+                </label>
+                <label class="checkbox">
+                    <input type="checkbox" th:field="*{clearApiKey}">
+                    清除已保存的 API Key
+                </label>
+            </div>
+
+            <label>系统提示词
+                <textarea th:field="*{llmSystemPrompt}" rows="5" maxlength="20000"></textarea>
+            </label>
+
+            <div class="form-grid">
+                <label>温度（0~2）
+                    <input type="number" th:field="*{llmTemperature}" step="0.1" min="0" max="2">
+                </label>
+                <label>最大 token 数
+                    <input type="number" th:field="*{llmMaxTokens}" min="1" max="131072">
+                </label>
+                <label>请求超时（秒）
+                    <input type="number" th:field="*{llmTimeoutSeconds}" min="1" max="600">
+                </label>
+                <label>携带历史消息条数
+                    <input type="number" th:field="*{llmHistoryLimit}" min="1" max="500">
+                    <span class="help">包含当前用户消息，默认 30 条</span>
+                </label>
+                <label>流式消息间隔（毫秒）
+                    <input type="number" th:field="*{llmStreamIntervalMs}" min="0" max="60000">
+                    <span class="help">两次推送之间的最小间隔，0 表示使用默认值 500 毫秒</span>
+                </label>
+                <label class="checkbox">
+                    <input type="checkbox" th:field="*{llmStream}">
+                    使用流式接口
+                </label>
+            </div>
+        </fieldset>
+
+        <div class="form-actions">
+            <button type="submit" class="primary">保存配置</button>
+            <a class="button-link" th:href="@{/admin}">返回概览</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>

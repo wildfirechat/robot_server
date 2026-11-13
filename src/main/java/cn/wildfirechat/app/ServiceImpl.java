@@ -2,18 +2,18 @@ package cn.wildfirechat.app;
 
 import cn.wildfirechat.app.im.MessageSender;
 import cn.wildfirechat.app.im.RobotMessageSender;
+import cn.wildfirechat.app.im.RobotServiceProvider;
 import cn.wildfirechat.app.llm.LlmReplyService;
-import cn.wildfirechat.app.webhook.WebhookService;
 import cn.wildfirechat.common.ErrorCode;
 import cn.wildfirechat.pojos.*;
-import cn.wildfirechat.sdk.RobotService;
 import cn.wildfirechat.sdk.model.*;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 
-import javax.annotation.PostConstruct;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 
@@ -25,19 +25,19 @@ public class ServiceImpl implements Service {
     private RobotConfig mRobotConfig;
 
     @Autowired
-    private WebhookService webhookService;
-
-    @Autowired
     private LlmReplyService llmReplyService;
 
-    private RobotService robotService;
+    private final RobotServiceProvider robotServiceProvider;
 
     private MessageSender messageSender;
 
+    public ServiceImpl(RobotServiceProvider robotServiceProvider) {
+        this.robotServiceProvider = robotServiceProvider;
+    }
+
     @PostConstruct
     private void init() {
-        robotService = new RobotService(mRobotConfig.im_url, mRobotConfig.getIm_id(), mRobotConfig.im_secret);
-        messageSender = new RobotMessageSender(robotService, mRobotConfig.getIm_id());
+        messageSender = new RobotMessageSender(robotServiceProvider, mRobotConfig);
     }
 
 //    int ConversationType_Private = 0;
@@ -75,24 +75,14 @@ public class ServiceImpl implements Service {
             }
 
             String response = messageData.getPayload().getSearchableContent();
-            LOG.info("msg:{}, robotName:{}", response, mRobotConfig.im_name);
             response = response.replace("@" + mRobotConfig.im_name, "").trim();
-            LOG.info("msg:{}, robotName:{}", response, mRobotConfig.im_name);
+            // 不打印消息正文，避免把用户聊天内容写进日志
+            LOG.info("收到文本消息, messageId:{}, length:{}", messageData.getMessageId(), response.length());
             if (messageData.getPayload().getType() == 1) {
-                if (response.equalsIgnoreCase("/list") || response.equalsIgnoreCase("/")) {
-                    if (conversation.getType() == 1 || conversation.getType() == 0) {
-                        response = webhookService.InvokeCommands();
-                    } else {
-                        response = "仅支持群组和私聊";
-                    }
-                } else if (webhookService.handleInvokeCommand(response, messageData.getSender(), messageData.getConv())) {
-                    return;
-                } else {
-                    // 普通文本交给大模型，流式回复用户（会先保存消息并带上最近历史）
-                    llmReplyService.reply(conversation, messageData.getSender(), response,
-                            replyMessage ? messageData.getMessageId() : 0, messageSender);
-                    return;
-                }
+                // 普通文本交给大模型，流式回复用户（会先保存消息并带上最近历史）
+                llmReplyService.reply(conversation, messageData.getSender(), response,
+                        replyMessage ? messageData.getMessageId() : 0, messageSender);
+                return;
             } else if (messageData.getPayload().getType() == 3) {
                 response = "不好意思，我还不会看照片哟～";
             } else if (messageData.getPayload().getType() == 2) {
@@ -107,9 +97,9 @@ public class ServiceImpl implements Service {
                 payload.setType(402);
                 payload.setContent(messageData.getPayload().getContent());
                 String reason = "{\"r\":5}";
-                payload.setBase64edData(Base64.getEncoder().encodeToString(reason.getBytes()));
+                payload.setBase64edData(Base64.getEncoder().encodeToString(reason.getBytes(StandardCharsets.UTF_8)));
                 try {
-                    robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                    robotServiceProvider.get().sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -124,7 +114,7 @@ public class ServiceImpl implements Service {
             if (conversation.getType() == 1 && messageData.getPayload().getType() == 1) { //群里的文本，加上@信息
                 InputOutputUserInfo sender = null;
                 try {
-                    IMResult<InputOutputUserInfo> result = robotService.getUserInfo(messageData.getSender());
+                    IMResult<InputOutputUserInfo> result = robotServiceProvider.get().getUserInfo(messageData.getSender());
                     if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
                         sender = result.getResult();
                     }
@@ -140,9 +130,9 @@ public class ServiceImpl implements Service {
             try {
                 IMResult<SendMessageResult> result;
                 if(replyMessage) {
-                    result = robotService.replyMessage(messageData.getMessageId(), payload, false);
+                    result = robotServiceProvider.get().replyMessage(messageData.getMessageId(), payload, false);
                 } else {
-                    result = robotService.sendMessage(mRobotConfig.getIm_id(), conversation, payload);
+                    result = robotServiceProvider.get().sendMessage(mRobotConfig.getIm_id(), conversation, payload);
                 }
                 if (result != null) {
                     if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {

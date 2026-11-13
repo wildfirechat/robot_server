@@ -21,7 +21,7 @@ public class ChatMessageRepository {
     private static final Logger LOG = LoggerFactory.getLogger(ChatMessageRepository.class);
 
     private static final String SELECT_COLUMNS =
-            "SELECT id, conv_type, conv_target, sender, role, content, send_time FROM chat_message";
+            "SELECT id, conv_type, conv_target, sender, msg_role, content, send_time FROM chat_message";
 
     private static final RowMapper<ChatMessage> ROW_MAPPER = new RowMapper<ChatMessage>() {
         @Override
@@ -31,7 +31,7 @@ public class ChatMessageRepository {
             message.setConvType(rs.getInt("conv_type"));
             message.setConvTarget(rs.getString("conv_target"));
             message.setSender(rs.getString("sender"));
-            message.setRole(rs.getString("role"));
+            message.setRole(rs.getString("msg_role"));
             message.setContent(rs.getString("content"));
             message.setSendTime(rs.getTimestamp("send_time").getTime());
             return message;
@@ -67,18 +67,23 @@ public class ChatMessageRepository {
                 + "conv_type INT NOT NULL,"
                 + "conv_target VARCHAR(128) NOT NULL,"
                 + "sender VARCHAR(128),"
-                + "role VARCHAR(16) NOT NULL,"
+                + "msg_role VARCHAR(16) NOT NULL,"
                 + "content " + contentColumn + ","
                 + "send_time TIMESTAMP NOT NULL)");
+        createIndex("idx_chat_message_conv", "conv_type, conv_target, id");
+        createIndex("idx_chat_message_role_time", "msg_role, send_time");
+        createIndex("idx_chat_message_time", "send_time");
+    }
+
+    private void createIndex(String name, String columns) {
+        // MySQL 不支持 CREATE INDEX IF NOT EXISTS，索引已存在时忽略异常
+        String sql = mysql
+                ? "CREATE INDEX " + name + " ON chat_message (" + columns + ")"
+                : "CREATE INDEX IF NOT EXISTS " + name + " ON chat_message (" + columns + ")";
         try {
-            if (mysql) {
-                // MySQL 不支持 CREATE INDEX IF NOT EXISTS，重复创建时忽略异常
-                jdbcTemplate.execute("CREATE INDEX idx_chat_message_conv ON chat_message (conv_type, conv_target, id)");
-            } else {
-                jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_chat_message_conv ON chat_message (conv_type, conv_target, id)");
-            }
+            jdbcTemplate.execute(sql);
         } catch (Exception e) {
-            LOG.debug("聊天记录索引已存在: {}", e.getMessage());
+            LOG.debug("聊天记录索引已存在: {}", name);
         }
     }
 
@@ -89,7 +94,7 @@ public class ChatMessageRepository {
      */
     public boolean insert(ChatMessage message) {
         try {
-            jdbcTemplate.update("INSERT INTO chat_message (conv_type, conv_target, sender, role, content, send_time) "
+            jdbcTemplate.update("INSERT INTO chat_message (conv_type, conv_target, sender, msg_role, content, send_time) "
                             + "VALUES (?, ?, ?, ?, ?, ?)",
                     message.getConvType(),
                     message.getConvTarget(),
@@ -114,8 +119,8 @@ public class ChatMessageRepository {
         }
         List<ChatMessage> messages = jdbcTemplate.query(
                 SELECT_COLUMNS + " WHERE conv_type = ? AND conv_target = ? ORDER BY id DESC LIMIT ?",
-                new Object[]{convType, convTarget, limit},
-                ROW_MAPPER);
+                ROW_MAPPER,
+                convType, convTarget, limit);
         List<ChatMessage> result = new ArrayList<>(messages);
         Collections.reverse(result);
         return result;

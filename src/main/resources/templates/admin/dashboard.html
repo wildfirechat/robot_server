@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('概览')}"></head>
+<body>
+<header th:replace="~{admin/fragments :: nav}"></header>
+<main class="container">
+    <h1>运行概览</h1>
+    <p class="subtle">
+        机器人 <code th:text="${robotId}">FireRobot</code>
+        · 模型 <code th:text="${llmModel}">deepseek-chat</code>
+    </p>
+
+    <div class="alert warn" th:if="${!robotConfigured}">
+        机器人 IM 配置不完整（im_url / im_id / im_secret），请先到<a th:href="@{/admin/config}">配置管理</a>完成配置。
+    </div>
+    <div class="alert warn" th:if="${!llmConfigured}">
+        大模型未启用或模型未配置，机器人暂时不会调用大模型。请到<a th:href="@{/admin/config}">配置管理</a>开启。
+    </div>
+
+    <section class="cards">
+        <div class="card"><span class="label">今日消息</span><strong th:text="${stats.todayMessages}">0</strong></div>
+        <div class="card"><span class="label">今日用户消息</span><strong th:text="${stats.todayUserMessages}">0</strong></div>
+        <div class="card"><span class="label">今日机器人回复</span><strong th:text="${stats.todayAssistantMessages}">0</strong></div>
+        <div class="card"><span class="label">今日大模型调用</span><strong th:text="${stats.todayLlmCalls}">0</strong></div>
+        <div class="card"><span class="label">今日调用失败</span><strong th:text="${stats.todayLlmFailures}">0</strong></div>
+        <div class="card"><span class="label">会话总数</span><strong th:text="${stats.totalConversations}">0</strong></div>
+        <div class="card"><span class="label">累计消息</span><strong th:text="${stats.totalMessages}">0</strong></div>
+        <div class="card"><span class="label">累计大模型调用</span><strong th:text="${stats.totalLlmCalls}">0</strong></div>
+        <div class="card"><span class="label">调用成功率</span><strong><span th:text="${stats.llmSuccessRate}">0</span>%</strong></div>
+        <div class="card"><span class="label">平均耗时</span><strong><span th:text="${stats.avgLlmDurationMs}">0</span> ms</strong></div>
+    </section>
+
+    <section class="panel">
+        <h2>最近 7 天</h2>
+        <table class="table">
+            <thead>
+            <tr>
+                <th>日期</th>
+                <th>消息量</th>
+                <th>用户 / 机器人</th>
+                <th>大模型调用</th>
+                <th>调用失败</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="day : ${stats.dailyStats}">
+                <td th:text="${day.dateText}">10-01</td>
+                <td>
+                    <div class="bar"><div class="bar-fill" th:style="'width:' + ${day.messagePercent} + '%'"></div></div>
+                    <span class="bar-text" th:text="${day.totalMessages}">0</span>
+                </td>
+                <td th:text="${day.userMessages} + ' / ' + ${day.assistantMessages}">0 / 0</td>
+                <td>
+                    <div class="bar"><div class="bar-fill llm" th:style="'width:' + ${day.llmPercent} + '%'"></div></div>
+                    <span class="bar-text" th:text="${day.llmCalls}">0</span>
+                </td>
+                <td th:text="${day.llmFailures}">0</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <div class="grid-2">
+        <section class="panel">
+            <h2>最近会话</h2>
+            <table class="table">
+                <thead>
+                <tr><th>类型</th><th>会话 ID</th><th>消息数</th><th>最后活跃</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="c : ${stats.recentConversations}">
+                    <td th:text="${c.convTypeText}">单聊</td>
+                    <td><code th:text="${c.convTarget}">user1</code></td>
+                    <td th:text="${c.messageCount}">0</td>
+                    <td th:text="${c.lastTimeText}">2026-01-01 12:00</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(stats.recentConversations)}">
+                    <td colspan="4" class="empty">暂无会话</td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel">
+            <h2>最近消息</h2>
+            <table class="table">
+                <thead>
+                <tr><th>时间</th><th>角色</th><th>内容</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="msg : ${stats.recentMessages}">
+                    <td class="nowrap" th:text="${msg.timeText}">10-01 12:00</td>
+                    <td><span class="tag" th:text="${msg.roleText}">用户</span></td>
+                    <td th:text="${msg.preview}">消息内容</td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(stats.recentMessages)}">
+                    <td colspan="3" class="empty">暂无消息</td>
+                </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+</main>
+</body>
+</html>

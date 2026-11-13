@@ -4,25 +4,25 @@ import cn.wildfirechat.app.RobotConfig;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class OpenAiLlmClientTest {
     private TestLlmServer server;
     private RobotConfig config;
     private OpenAiLlmClient client;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         server = new TestLlmServer();
         config = new RobotConfig();
@@ -34,7 +34,7 @@ public class OpenAiLlmClientTest {
         client.init();
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception {
         client.destroy();
         server.close();
@@ -92,8 +92,8 @@ public class OpenAiLlmClientTest {
             client.chat(Arrays.asList(new LlmMessage(LlmMessage.ROLE_USER, "hi")), null);
             fail("应当抛出 LlmException");
         } catch (LlmException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("401"));
-            assertTrue(e.getMessage(), e.getMessage().contains("invalid api key"));
+            assertTrue(e.getMessage().contains("401"), e.getMessage());
+            assertTrue(e.getMessage().contains("invalid api key"), e.getMessage());
         }
     }
 
@@ -104,7 +104,7 @@ public class OpenAiLlmClientTest {
             client.chat(Arrays.asList(new LlmMessage(LlmMessage.ROLE_USER, "hi")), null);
             fail("应当抛出 LlmException");
         } catch (LlmException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("rate limit"));
+            assertTrue(e.getMessage().contains("rate limit"), e.getMessage());
         }
     }
 

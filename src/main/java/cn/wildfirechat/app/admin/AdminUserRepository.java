@@ -1,0 +1,69 @@
+package cn.wildfirechat.app.admin;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
+
+import java.sql.Timestamp;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * 管理员账号存储。密码只保存 BCrypt 哈希。
+ */
+@Repository
+public class AdminUserRepository {
+    private static final RowMapper<AdminUser> ROW_MAPPER = (rs, rowNum) -> {
+        AdminUser user = new AdminUser();
+        user.setId(rs.getLong("id"));
+        user.setUsername(rs.getString("username"));
+        user.setPasswordHash(rs.getString("password_hash"));
+        user.setCreatedTime(rs.getTimestamp("created_time").getTime());
+        user.setUpdatedTime(rs.getTimestamp("updated_time").getTime());
+        user.setMustChangePassword(rs.getBoolean("must_change_password"));
+        return user;
+    };
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public AdminUserRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+        initSchema();
+    }
+
+    private void initSchema() {
+        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS admin_user ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "username VARCHAR(64) NOT NULL UNIQUE,"
+                + "password_hash VARCHAR(100) NOT NULL,"
+                + "created_time TIMESTAMP NOT NULL,"
+                + "updated_time TIMESTAMP NOT NULL,"
+                + "must_change_password BOOLEAN NOT NULL)");
+    }
+
+    public long count() {
+        Long value = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM admin_user", Long.class);
+        return value == null ? 0 : value;
+    }
+
+    public Optional<AdminUser> findByUsername(String username) {
+        List<AdminUser> users = jdbcTemplate.query(
+                "SELECT id, username, password_hash, created_time, updated_time, must_change_password "
+                        + "FROM admin_user WHERE username = ?",
+                ROW_MAPPER, username);
+        return users.isEmpty() ? Optional.empty() : Optional.of(users.get(0));
+    }
+
+    public void insert(String username, String passwordHash, long now, boolean mustChangePassword) {
+        Timestamp timestamp = new Timestamp(now);
+        jdbcTemplate.update("INSERT INTO admin_user (username, password_hash, created_time, updated_time, "
+                        + "must_change_password) VALUES (?, ?, ?, ?, ?)",
+                username, passwordHash, timestamp, timestamp, mustChangePassword);
+    }
+
+    public void updatePassword(String username, String passwordHash, long now) {
+        jdbcTemplate.update("UPDATE admin_user SET password_hash = ?, updated_time = ?, "
+                        + "must_change_password = FALSE WHERE username = ?",
+                passwordHash, new Timestamp(now), username);
+    }
+}

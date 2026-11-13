@@ -20,8 +20,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -57,21 +57,16 @@ public class OpenAiLlmClient {
 
     @PostConstruct
     public void init() {
-        RobotConfig.Llm llm = robotConfig.getLlm();
-        int socketTimeoutMs = Math.max(1, llm.getTimeoutSeconds()) * 1000;
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(CONNECT_TIMEOUT_MS)
                 .setConnectionRequestTimeout(CONNECT_TIMEOUT_MS)
-                .setSocketTimeout(socketTimeoutMs)
                 .build();
         httpClient = HttpClients.custom()
                 .setDefaultRequestConfig(requestConfig)
                 .setMaxConnTotal(100)
                 .setMaxConnPerRoute(50)
                 .build();
-        LOG.info("大模型配置: url={}, model={}, stream={}, historyLimit={}, apiKey={}",
-                resolveUrl(), llm.getModel(), llm.isStream(), llm.getHistoryLimit(),
-                (llm.getApiKey() == null || llm.getApiKey().isEmpty()) ? "(未配置)" : "(已配置)");
+        LOG.info("大模型客户端已初始化");
     }
 
     @PreDestroy
@@ -91,6 +86,11 @@ public class OpenAiLlmClient {
         }
 
         HttpPost post = new HttpPost(resolveUrl());
+        post.setConfig(RequestConfig.custom()
+                .setConnectTimeout(CONNECT_TIMEOUT_MS)
+                .setConnectionRequestTimeout(CONNECT_TIMEOUT_MS)
+                .setSocketTimeout(Math.max(1, llm.getTimeoutSeconds()) * 1000)
+                .build());
         post.setHeader("Content-Type", "application/json; charset=utf-8");
         post.setHeader("Accept", llm.isStream() ? "text/event-stream" : "application/json");
         String apiKey = llm.getApiKey();

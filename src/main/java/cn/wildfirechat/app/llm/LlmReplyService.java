@@ -4,6 +4,7 @@ import cn.wildfirechat.app.RobotConfig;
 import cn.wildfirechat.app.chat.ChatHistoryService;
 import cn.wildfirechat.app.im.ImStreamingSender;
 import cn.wildfirechat.app.im.MessageSender;
+import cn.wildfirechat.app.stats.LlmCallRepository;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
 import org.slf4j.Logger;
@@ -17,28 +18,32 @@ import java.util.List;
 /**
  * 大模型回复服务：
  * 1. 保存用户消息到数据库；
- * 2. 查询该会话最近 N 条历史（N 可配置，默认 30）；
+ * 2. 查询该会话最近 N 条历史（N 可在管理后台配置，默认 30）；
  * 3. 组装 system + 历史消息调用大模型；
  * 4. 用流式文本消息把结果回复给用户；
- * 5. 保存机器人的回答，形成下一轮对话的上下文。
+ * 5. 保存机器人的回答，形成下一轮对话的上下文；
+ * 6. 记录本次大模型调用的耗时和结果，供管理后台统计。
  */
 @Service
 public class LlmReplyService {
     private static final Logger LOG = LoggerFactory.getLogger(LlmReplyService.class);
 
-    private static final String DISABLED_REPLY = "AI 回复功能尚未开启，请联系管理员开启配置 robot.llm.enabled。";
+    private static final String DISABLED_REPLY = "AI 回复功能尚未开启，请联系管理员在管理后台开启。";
     private static final String UNAVAILABLE_REPLY = "抱歉，AI 服务暂时不可用，请稍后再试。";
     private static final String EMPTY_QUESTION_REPLY = "你想问点什么呢？";
 
     private final OpenAiLlmClient llmClient;
     private final ChatHistoryService chatHistoryService;
     private final RobotConfig robotConfig;
+    private final LlmCallRepository llmCallRepository;
 
     @Autowired
-    public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService, RobotConfig robotConfig) {
+    public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService,
+                           RobotConfig robotConfig, LlmCallRepository llmCallRepository) {
         this.llmClient = llmClient;
         this.chatHistoryService = chatHistoryService;
         this.robotConfig = robotConfig;
+        this.llmCallRepository = llmCallRepository;
     }
 
     /**
@@ -70,6 +75,12 @@ public class LlmReplyService {
         List<LlmMessage> messages = buildMessages(convType, convTarget, userText, saved);
         LOG.info("调用大模型, convType:{}, convTarget:{}, 携带消息数:{}", convType, convTarget, messages.size());
 
+        long startedAt = System.currentTimeMillis();
+        String model = llm.getModel();
+        int promptChars = countChars(messages);
+        boolean success = false;
+        String error = null;
+
         ImStreamingSender streamingSender = new ImStreamingSender(
                 messageSender, conversation, replyMessageId, llm.getStreamIntervalMs());
         try {
@@ -79,13 +90,16 @@ public class LlmReplyService {
                 streamingSender.onDelta(answer);
             }
             if (streamingSender.getFullText().isEmpty()) {
+                error = "大模型返回内容为空";
                 LOG.warn("大模型返回内容为空, convTarget:{}", convTarget);
                 sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY);
                 return;
             }
             streamingSender.finish();
             chatHistoryService.saveAssistantMessage(convType, convTarget, streamingSender.getFullText());
+            success = true;
         } catch (Exception e) {
+            error = e.getMessage();
             LOG.error("大模型回复失败, convType:{}, convTarget:{}", convType, convTarget, e);
             if (streamingSender.hasSent()) {
                 // 已输出部分内容，补发结束消息，避免客户端一直显示「生成中」
@@ -97,6 +111,10 @@ public class LlmReplyService {
             } else {
                 sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY);
             }
+        } finally {
+            llmCallRepository.insert(convType, convTarget, sender, model, startedAt,
+                    System.currentTimeMillis() - startedAt, success, error,
+                    promptChars, streamingSender.getFullText().length());
         }
     }
 
@@ -117,6 +135,16 @@ public class LlmReplyService {
             messages.add(new LlmMessage(LlmMessage.ROLE_USER, userText));
         }
         return messages;
+    }
+
+    private static int countChars(List<LlmMessage> messages) {
+        int total = 0;
+        for (LlmMessage message : messages) {
+            if (message.getContent() != null) {
+                total += message.getContent().length();
+            }
+        }
+        return total;
     }
 
     private static boolean hasSystemPrompt(RobotConfig.Llm llm) {

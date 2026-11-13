@@ -5,23 +5,24 @@ import cn.wildfirechat.app.chat.ChatHistoryService;
 import cn.wildfirechat.app.chat.ChatMessage;
 import cn.wildfirechat.app.chat.ChatMessageRepository;
 import cn.wildfirechat.app.im.MessageSender;
+import cn.wildfirechat.app.stats.LlmCallRepository;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class LlmReplyServiceTest {
     private static final int STREAM_GENERATING_TYPE = 14;
@@ -31,10 +32,11 @@ public class LlmReplyServiceTest {
     private RobotConfig config;
     private OpenAiLlmClient client;
     private ChatMessageRepository repository;
+    private LlmCallRepository llmCallRepository;
     private LlmReplyService replyService;
     private RecordingSender sender;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         server = new TestLlmServer();
 
@@ -43,10 +45,13 @@ public class LlmReplyServiceTest {
         dataSource.setUrl("jdbc:h2:mem:llm_reply_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
         dataSource.setUsername("sa");
         dataSource.setPassword("");
-        repository = new ChatMessageRepository(new JdbcTemplate(dataSource));
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        repository = new ChatMessageRepository(jdbcTemplate);
+        llmCallRepository = new LlmCallRepository(jdbcTemplate);
 
         config = new RobotConfig();
         config.setIm_id("FireRobot");
+        config.getLlm().setEnabled(true);
         config.getLlm().setBaseUrl(server.baseUrl());
         config.getLlm().setApiKey("test-key");
         config.getLlm().setModel("test-model");
@@ -59,11 +64,11 @@ public class LlmReplyServiceTest {
         client.init();
 
         ChatHistoryService historyService = new ChatHistoryService(repository, config);
-        replyService = new LlmReplyService(client, historyService, config);
+        replyService = new LlmReplyService(client, historyService, config, llmCallRepository);
         sender = new RecordingSender();
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception {
         client.destroy();
         server.close();
@@ -105,6 +110,7 @@ public class LlmReplyServiceTest {
         assertEquals(1, recent.size());
         assertEquals(ChatMessage.ROLE_ASSISTANT, recent.get(0).getRole());
         assertEquals("答案", recent.get(0).getContent());
+        assertEquals(1, llmCallRepository.count());
     }
 
     @Test
@@ -118,7 +124,7 @@ public class LlmReplyServiceTest {
         assertEquals(1, sender.messages.size());
         MessagePayload payload = sender.messages.get(0).payload;
         assertEquals(1, payload.getType());
-        assertTrue(payload.getSearchableContent(), payload.getSearchableContent().contains("抱歉"));
+        assertTrue(payload.getSearchableContent().contains("抱歉"), payload.getSearchableContent());
 
         List<ChatMessage> recent = repository.findRecent(0, "user1", 1);
         assertEquals(1, recent.size());
