@@ -39,6 +39,16 @@ public class ConfigService {
     static final String LLM_STREAM = "robot.llm.stream";
     static final String LLM_STREAM_INTERVAL_MS = "robot.llm.stream_interval_ms";
 
+    static final String RAG_ENABLED = "robot.rag.enabled";
+    static final String RAG_EMBEDDING_BASE_URL = "robot.rag.embedding_base_url";
+    static final String RAG_EMBEDDING_API_KEY = "robot.rag.embedding_api_key";
+    static final String RAG_EMBEDDING_MODEL = "robot.rag.embedding_model";
+    static final String RAG_TOP_K = "robot.rag.top_k";
+    static final String RAG_SCORE_THRESHOLD = "robot.rag.score_threshold";
+    static final String RAG_MAX_CONTEXT_CHARS = "robot.rag.max_context_chars";
+    static final String RAG_CHUNK_SIZE = "robot.rag.chunk_size";
+    static final String RAG_CHUNK_OVERLAP = "robot.rag.chunk_overlap";
+
     private final AppConfigRepository repository;
     private final RobotConfig robotConfig;
     private final SecretCipher secretCipher;
@@ -104,6 +114,18 @@ public class ConfigService {
         values.put(LLM_STREAM, String.valueOf(form.isLlmStream()));
         values.put(LLM_STREAM_INTERVAL_MS, String.valueOf(form.getLlmStreamIntervalMs()));
 
+        String ragApiKey = StringUtils.hasText(form.getRagEmbeddingApiKey())
+                ? form.getRagEmbeddingApiKey().trim() : robotConfig.getRag().getEmbeddingApiKey();
+        values.put(RAG_ENABLED, String.valueOf(form.isRagEnabled()));
+        values.put(RAG_EMBEDDING_BASE_URL, trim(form.getRagEmbeddingBaseUrl()));
+        values.put(RAG_EMBEDDING_API_KEY, secretCipher.encrypt(ragApiKey));
+        values.put(RAG_EMBEDDING_MODEL, trim(form.getRagEmbeddingModel()));
+        values.put(RAG_TOP_K, String.valueOf(form.getRagTopK()));
+        values.put(RAG_SCORE_THRESHOLD, String.valueOf(form.getRagScoreThreshold()));
+        values.put(RAG_MAX_CONTEXT_CHARS, String.valueOf(form.getRagMaxContextChars()));
+        values.put(RAG_CHUNK_SIZE, String.valueOf(form.getRagChunkSize()));
+        values.put(RAG_CHUNK_OVERLAP, String.valueOf(form.getRagChunkOverlap()));
+
         repository.saveAll(values);
         apply(values);
         version.incrementAndGet();
@@ -152,6 +174,27 @@ public class ConfigService {
         checkRange(form.getLlmHistoryLimit(), 1, 500, "历史消息条数");
         if (form.getLlmStreamIntervalMs() < 0 || form.getLlmStreamIntervalMs() > 60000) {
             throw new IllegalArgumentException("流式消息间隔必须在 0~60000 毫秒之间");
+        }
+
+        if (form.isRagEnabled()) {
+            require(trim(form.getRagEmbeddingModel()), "Embedding 模型");
+        }
+        String embeddingBaseUrl = trim(form.getRagEmbeddingBaseUrl());
+        if (!embeddingBaseUrl.isEmpty()) {
+            checkHttpUrl(embeddingBaseUrl, "Embedding 接口地址");
+        }
+        if (form.getRagEmbeddingApiKey() != null && form.getRagEmbeddingApiKey().length() > 500) {
+            throw new IllegalArgumentException("Embedding API Key 不能超过500个字符");
+        }
+        checkRange(form.getRagTopK(), 1, 20, "知识库 TopK");
+        if (!Double.isFinite(form.getRagScoreThreshold())
+                || form.getRagScoreThreshold() < 0 || form.getRagScoreThreshold() > 1) {
+            throw new IllegalArgumentException("知识库相似度阈值必须在 0~1 之间");
+        }
+        checkRange(form.getRagMaxContextChars(), 500, 12000, "知识库上下文长度");
+        checkRange(form.getRagChunkSize(), 200, 2000, "知识库分块大小");
+        if (form.getRagChunkOverlap() < 0 || form.getRagChunkOverlap() > form.getRagChunkSize() / 2) {
+            throw new IllegalArgumentException("知识库分块重叠不能超过分块大小的一半");
         }
     }
 
@@ -203,6 +246,17 @@ public class ConfigService {
         llm.setHistoryLimit(intValue(values, LLM_HISTORY_LIMIT, llm.getHistoryLimit()));
         llm.setStream(boolValue(values, LLM_STREAM, llm.isStream()));
         llm.setStreamIntervalMs(longValue(values, LLM_STREAM_INTERVAL_MS, llm.getStreamIntervalMs()));
+
+        RobotConfig.Rag rag = robotConfig.getRag();
+        rag.setEnabled(boolValue(values, RAG_ENABLED, rag.isEnabled()));
+        rag.setEmbeddingBaseUrl(value(values, RAG_EMBEDDING_BASE_URL, rag.getEmbeddingBaseUrl()));
+        rag.setEmbeddingApiKey(secretCipher.decrypt(value(values, RAG_EMBEDDING_API_KEY, rag.getEmbeddingApiKey())));
+        rag.setEmbeddingModel(value(values, RAG_EMBEDDING_MODEL, rag.getEmbeddingModel()));
+        rag.setTopK(intValue(values, RAG_TOP_K, rag.getTopK()));
+        rag.setScoreThreshold(doubleValue(values, RAG_SCORE_THRESHOLD, rag.getScoreThreshold()));
+        rag.setMaxContextChars(intValue(values, RAG_MAX_CONTEXT_CHARS, rag.getMaxContextChars()));
+        rag.setChunkSize(intValue(values, RAG_CHUNK_SIZE, rag.getChunkSize()));
+        rag.setChunkOverlap(intValue(values, RAG_CHUNK_OVERLAP, rag.getChunkOverlap()));
     }
 
     private Map<String, String> defaults() {
@@ -225,6 +279,16 @@ public class ConfigService {
         values.put(LLM_HISTORY_LIMIT, String.valueOf(llm.getHistoryLimit()));
         values.put(LLM_STREAM, String.valueOf(llm.isStream()));
         values.put(LLM_STREAM_INTERVAL_MS, String.valueOf(llm.getStreamIntervalMs()));
+        RobotConfig.Rag rag = defaults.getRag();
+        values.put(RAG_ENABLED, String.valueOf(rag.isEnabled()));
+        values.put(RAG_EMBEDDING_BASE_URL, rag.getEmbeddingBaseUrl());
+        values.put(RAG_EMBEDDING_API_KEY, rag.getEmbeddingApiKey());
+        values.put(RAG_EMBEDDING_MODEL, rag.getEmbeddingModel());
+        values.put(RAG_TOP_K, String.valueOf(rag.getTopK()));
+        values.put(RAG_SCORE_THRESHOLD, String.valueOf(rag.getScoreThreshold()));
+        values.put(RAG_MAX_CONTEXT_CHARS, String.valueOf(rag.getMaxContextChars()));
+        values.put(RAG_CHUNK_SIZE, String.valueOf(rag.getChunkSize()));
+        values.put(RAG_CHUNK_OVERLAP, String.valueOf(rag.getChunkOverlap()));
         return values;
     }
 

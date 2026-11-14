@@ -25,6 +25,16 @@ public class AdminConfigForm {
     private boolean llmStream;
     private long llmStreamIntervalMs;
 
+    private boolean ragEnabled;
+    private String ragEmbeddingBaseUrl;
+    private String ragEmbeddingApiKey;
+    private String ragEmbeddingModel = "text-embedding-3-small";
+    private int ragTopK = 5;
+    private double ragScoreThreshold = 0.25;
+    private int ragMaxContextChars = 6000;
+    private int ragChunkSize = 600;
+    private int ragChunkOverlap = 100;
+
     public static AdminConfigForm from(RobotConfig config) {
         AdminConfigForm form = new AdminConfigForm();
         form.setImId(config.getIm_id());
@@ -182,5 +192,77 @@ public class AdminConfigForm {
 
     public void setLlmStreamIntervalMs(long llmStreamIntervalMs) {
         this.llmStreamIntervalMs = llmStreamIntervalMs;
+    }
+
+    public boolean isRagEnabled() {
+        return ragEnabled;
+    }
+
+    public void setRagEnabled(boolean ragEnabled) {
+        this.ragEnabled = ragEnabled;
+    }
+
+    public String getRagEmbeddingBaseUrl() {
+        return ragEmbeddingBaseUrl;
+    }
+
+    public void setRagEmbeddingBaseUrl(String ragEmbeddingBaseUrl) {
+        this.ragEmbeddingBaseUrl = ragEmbeddingBaseUrl;
+    }
+
+    public String getRagEmbeddingApiKey() {
+        return ragEmbeddingApiKey;
+    }
+
+    public void setRagEmbeddingApiKey(String ragEmbeddingApiKey) {
+        this.ragEmbeddingApiKey = ragEmbeddingApiKey;
+    }
+
+    public String getRagEmbeddingModel() {
+        return ragEmbeddingModel;
+    }
+
+    public void setRagEmbeddingModel(String ragEmbeddingModel) {
+        this.ragEmbeddingModel = ragEmbeddingModel;
+    }
+
+    public int getRagTopK() {
+        return ragTopK;
+    }
+
+    public void setRagTopK(int ragTopK) {
+        this.ragTopK = ragTopK;
+    }
+
+    public double getRagScoreThreshold() {
+        return ragScoreThreshold;
+    }
+
+    public void setRagScoreThreshold(double ragScoreThreshold) {
+        this.ragScoreThreshold = ragScoreThreshold;
+    }
+
+    public int getRagMaxContextChars() {
+        return ragMaxContextChars;
+    }
+
+    public void setRagMaxContextChars(int ragMaxContextChars) {
+        this.ragMaxContextChars = ragMaxContextChars;
+    }
+
+    public int getRagChunkSize() {
+        return ragChunkSize;
+    }
+
+    public void setRagChunkSize(int ragChunkSize) {
+        this.ragChunkSize = ragChunkSize;
+    }
+
+    public int getRagChunkOverlap() {
+        return ragChunkOverlap;
+    }
+
+    public void setRagChunkOverlap(int ragChunkOverlap) {
+        this.ragChunkOverlap = ragChunkOverlap;
     }
 }

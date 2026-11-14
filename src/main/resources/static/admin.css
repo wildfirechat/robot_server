@@ -411,3 +411,33 @@ button.block {
     font-size: 12px;
     margin: 16px 0 0;
 }
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.link-button.danger {
+    color: var(--danger);
+}
+
+.error-text {
+    color: var(--danger);
+    font-size: 12px;
+    margin-top: 4px;
+    word-break: break-word;
+}
+
+.form input[type="file"] {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    font: inherit;
+}

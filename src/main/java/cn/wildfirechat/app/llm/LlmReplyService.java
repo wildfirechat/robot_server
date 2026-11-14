@@ -4,6 +4,8 @@ import cn.wildfirechat.app.RobotConfig;
 import cn.wildfirechat.app.chat.ChatHistoryService;
 import cn.wildfirechat.app.im.ImStreamingSender;
 import cn.wildfirechat.app.im.MessageSender;
+import cn.wildfirechat.app.rag.RagResult;
+import cn.wildfirechat.app.rag.RagService;
 import cn.wildfirechat.app.stats.LlmCallRepository;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
@@ -47,18 +49,29 @@ public class LlmReplyService {
     private final ChatHistoryService chatHistoryService;
     private final RobotConfig robotConfig;
     private final LlmCallRepository llmCallRepository;
+    private final RagService ragService;
     private final ReentrantLock[] conversationLocks = new ReentrantLock[CONVERSATION_LOCK_COUNT];
 
     @Autowired
     public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService,
-                           RobotConfig robotConfig, LlmCallRepository llmCallRepository) {
+                           RobotConfig robotConfig, LlmCallRepository llmCallRepository,
+                           RagService ragService) {
         this.llmClient = llmClient;
         this.chatHistoryService = chatHistoryService;
         this.robotConfig = robotConfig;
         this.llmCallRepository = llmCallRepository;
+        this.ragService = ragService;
         for (int i = 0; i < conversationLocks.length; i++) {
             conversationLocks[i] = new ReentrantLock(true);
         }
+    }
+
+    /**
+     * 测试/无知识库场景的构造器。
+     */
+    public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService,
+                           RobotConfig robotConfig, LlmCallRepository llmCallRepository) {
+        this(llmClient, chatHistoryService, robotConfig, llmCallRepository, null);
     }
 
     /**
@@ -112,7 +125,10 @@ public class LlmReplyService {
                          MessageSender messageSender, RobotConfig.Llm llm, int convType, String convTarget,
                          String mentionPrefix, String mentionedUserId) {
         boolean saved = chatHistoryService.saveUserMessage(convType, convTarget, sender, userText);
-        List<LlmMessage> messages = buildMessages(convType, convTarget, userText, saved);
+        RagResult ragResult = ragService == null
+                ? RagResult.empty()
+                : ragService.retrieve(convType, convTarget, userText);
+        List<LlmMessage> messages = buildMessages(convType, convTarget, userText, saved, ragResult);
         messages = trimPrompt(messages);
         LOG.info("调用大模型, convType:{}, convTarget:{}, 携带消息数:{}, prompt字符数:{}",
                 convType, convTarget, messages.size(), countChars(messages));
@@ -177,16 +193,22 @@ public class LlmReplyService {
      * 组装 system + 最近历史消息。历史中包含刚落库的当前用户消息；
      * 若保存失败或历史为空，则至少把当前消息带上。
      */
-    private List<LlmMessage> buildMessages(int convType, String convTarget, String userText, boolean userMessageSaved) {
+    private List<LlmMessage> buildMessages(int convType, String convTarget, String userText,
+                                            boolean userMessageSaved, RagResult ragResult) {
         RobotConfig.Llm llm = robotConfig.getLlm();
         List<LlmMessage> messages = new ArrayList<>();
         if (llm.getSystemPrompt() != null && !llm.getSystemPrompt().trim().isEmpty()) {
             messages.add(new LlmMessage(LlmMessage.ROLE_SYSTEM, llm.getSystemPrompt()));
         }
+        if (ragResult != null && ragResult.hasContext()) {
+            messages.add(new LlmMessage(LlmMessage.ROLE_SYSTEM,
+                    "请仅根据以下参考资料回答用户问题；资料不足时明确说明。回答中用 [1][2] 标注引用来源。\n\n"
+                            + ragResult.getContext()));
+        }
         List<LlmMessage> history = chatHistoryService.loadHistory(convType, convTarget);
         messages.addAll(history);
-        int historyCount = messages.size() - (hasSystemPrompt(llm) ? 1 : 0);
-        if (!userMessageSaved || historyCount == 0) {
+        // history 为空（保存失败/limit=0）时至少带上当前问题；不能把 system/RAG 消息算进历史条数
+        if (!userMessageSaved || history.isEmpty()) {
             messages.add(new LlmMessage(LlmMessage.ROLE_USER, userText));
         }
         return messages;
@@ -200,8 +222,11 @@ public class LlmReplyService {
         if (total <= MAX_PROMPT_CHARS) {
             return messages;
         }
-        int start = !messages.isEmpty()
-                && LlmMessage.ROLE_SYSTEM.equals(messages.get(0).getRole()) ? 1 : 0;
+        int start = 0;
+        while (start < messages.size()
+                && LlmMessage.ROLE_SYSTEM.equals(messages.get(start).getRole())) {
+            start++;
+        }
         int removed = 0;
         while (total > MAX_PROMPT_CHARS && messages.size() > start + 1) {
             LlmMessage message = messages.remove(start);
@@ -224,10 +249,6 @@ public class LlmReplyService {
 
     private static int contentLength(LlmMessage message) {
         return message.getContent() == null ? 0 : message.getContent().length();
-    }
-
-    private static boolean hasSystemPrompt(RobotConfig.Llm llm) {
-        return llm.getSystemPrompt() != null && !llm.getSystemPrompt().trim().isEmpty();
     }
 
     private static void sendText(MessageSender messageSender, Conversation conversation,

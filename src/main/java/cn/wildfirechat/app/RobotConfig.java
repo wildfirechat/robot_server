@@ -16,6 +16,7 @@ public class RobotConfig {
     public volatile int retentionDays = 0;
 
     private final Llm llm = new Llm();
+    private final Rag rag = new Rag();
 
     public String getIm_name() {
         return im_name;
@@ -55,6 +56,10 @@ public class RobotConfig {
 
     public void setRetentionDays(int retentionDays) {
         this.retentionDays = retentionDays;
+    }
+
+    public Rag getRag() {
+        return rag;
     }
 
     public Llm getLlm() {
@@ -171,6 +176,99 @@ public class RobotConfig {
 
         public void setStream(boolean stream) {
             this.stream = stream;
+        }
+    }
+
+    public static class Rag {
+        /** 是否启用知识库检索 */
+        private volatile boolean enabled = false;
+        /** Embedding 接口地址，留空复用大模型地址 */
+        private volatile String embeddingBaseUrl = "";
+        /** Embedding API Key，留空复用大模型 Key */
+        private volatile String embeddingApiKey = "";
+        /** Embedding 模型名称 */
+        private volatile String embeddingModel = "text-embedding-3-small";
+        /** 检索返回的片段数 */
+        private volatile int topK = 5;
+        /** 最低余弦相似度 */
+        private volatile double scoreThreshold = 0.25;
+        /** 拼进 prompt 的参考资料最大字符数 */
+        private volatile int maxContextChars = 6000;
+        /** 文档分块大小（字符） */
+        private volatile int chunkSize = 600;
+        /** 相邻块重叠字符数 */
+        private volatile int chunkOverlap = 100;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getEmbeddingBaseUrl() {
+            return embeddingBaseUrl;
+        }
+
+        public void setEmbeddingBaseUrl(String embeddingBaseUrl) {
+            this.embeddingBaseUrl = embeddingBaseUrl;
+        }
+
+        public String getEmbeddingApiKey() {
+            return embeddingApiKey;
+        }
+
+        public void setEmbeddingApiKey(String embeddingApiKey) {
+            this.embeddingApiKey = embeddingApiKey;
+        }
+
+        public String getEmbeddingModel() {
+            return embeddingModel;
+        }
+
+        public void setEmbeddingModel(String embeddingModel) {
+            this.embeddingModel = embeddingModel;
+        }
+
+        public int getTopK() {
+            return topK;
+        }
+
+        public void setTopK(int topK) {
+            this.topK = topK;
+        }
+
+        public double getScoreThreshold() {
+            return scoreThreshold;
+        }
+
+        public void setScoreThreshold(double scoreThreshold) {
+            this.scoreThreshold = scoreThreshold;
+        }
+
+        public int getMaxContextChars() {
+            return maxContextChars;
+        }
+
+        public void setMaxContextChars(int maxContextChars) {
+            this.maxContextChars = maxContextChars;
+        }
+
+        public int getChunkSize() {
+            return chunkSize;
+        }
+
+        public void setChunkSize(int chunkSize) {
+            this.chunkSize = chunkSize;
+        }
+
+        public int getChunkOverlap() {
+            return chunkOverlap;
+        }
+
+        public void setChunkOverlap(int chunkOverlap) {
+            this.chunkOverlap = chunkOverlap;
         }
     }
 }

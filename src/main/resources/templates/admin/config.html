@@ -89,6 +89,43 @@
         </fieldset>
 
         <fieldset>
+            <legend>知识库 / RAG</legend>
+            <label class="checkbox">
+                <input type="checkbox" th:field="*{ragEnabled}">
+                启用知识库检索
+            </label>
+            <div class="form-grid">
+                <label>Embedding 接口地址
+                    <input type="text" th:field="*{ragEmbeddingBaseUrl}" maxlength="500"
+                           placeholder="留空复用大模型地址">
+                    <span class="help">例如 https://api.openai.com/v1，程序自动拼接 /embeddings</span>
+                </label>
+                <label>Embedding API Key
+                    <input type="password" th:field="*{ragEmbeddingApiKey}" autocomplete="new-password"
+                           placeholder="留空复用大模型 API Key">
+                </label>
+                <label>Embedding 模型
+                    <input type="text" th:field="*{ragEmbeddingModel}" maxlength="128" placeholder="text-embedding-3-small">
+                </label>
+                <label>检索 TopK
+                    <input type="number" th:field="*{ragTopK}" min="1" max="20">
+                </label>
+                <label>相似度阈值
+                    <input type="number" th:field="*{ragScoreThreshold}" step="0.01" min="0" max="1">
+                </label>
+                <label>参考资料最大字符数
+                    <input type="number" th:field="*{ragMaxContextChars}" min="500" max="12000">
+                </label>
+                <label>分块大小（字符）
+                    <input type="number" th:field="*{ragChunkSize}" min="200" max="2000">
+                </label>
+                <label>分块重叠（字符）
+                    <input type="number" th:field="*{ragChunkOverlap}" min="0" max="1000">
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
             <legend>数据保留</legend>
             <div class="form-grid">
                 <label>历史数据保留天数

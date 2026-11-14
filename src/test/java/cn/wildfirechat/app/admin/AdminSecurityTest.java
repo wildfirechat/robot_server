@@ -55,6 +55,9 @@ public class AdminSecurityTest {
         mockMvc.perform(get("/admin/password").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("修改密码")));
+        mockMvc.perform(get("/admin/knowledge").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("知识库")));
     }
 
     @Test
