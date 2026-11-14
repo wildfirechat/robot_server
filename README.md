@@ -1,4 +1,6 @@
-# 野火IM 智能助手应用
+# Wildfire AI Assistant
+
+项目名称：`wildfire-ai-assistant`（野火智能助手）。
 
 野火IM 智能助手服务，已接入 OpenAI 兼容的大模型（默认 DeepSeek），并提供 **智能助手管理后台**：机器人、大模型、知识库和网站抓取参数都在后台配置，配置保存在 PostgreSQL 中，保存后立即生效；后台同时提供消息、会话、大模型调用统计和消息检索。
 
@@ -35,7 +37,7 @@
 2. 修改 `config/application.properties`，填写端口和 PostgreSQL 连接（见下文）。
 3. 启动服务：
    ```
-   java -jar robot-XXXXX.jar
+   java -jar wildfire-ai-assistant-0.25.jar
    ```
 4. 管理员账号在首次启动时自动创建：
    - 用户名默认 `admin`，可通过环境变量 `ROBOT_ADMIN_USERNAME` 指定；
@@ -176,16 +178,16 @@ spring.datasource.hikari.maximum-pool-size=10
 mvn package
 ```
 
-在 `target` 目录找到 `robot-XXXX.jar`，把 jar 包和 `config` 目录放到一起，然后执行：
+在 `target` 目录找到 `wildfire-ai-assistant-0.25.jar`，把 jar 包和 `config` 目录放到一起，然后执行：
 
 ```
-java -jar robot-XXXXX.jar
+java -jar wildfire-ai-assistant-0.25.jar
 ```
 
 首次启动如需指定管理员密码：
 
 ```
-ROBOT_ADMIN_PASSWORD='YourStrongPass123' java -jar robot-XXXXX.jar
+ROBOT_ADMIN_PASSWORD='YourStrongPass123' java -jar wildfire-ai-assistant-0.25.jar
 ```
 
 ## 测试
