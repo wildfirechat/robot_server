@@ -74,11 +74,50 @@ public class ChatMessageRepositoryTest {
         assertTrue(repository.findRecent(0, "user1", 0).isEmpty());
     }
 
+    @Test
+    public void pageFiltersBySenderAndConversation() {
+        for (int i = 0; i < 13; i++) {
+            insert(0, "user1", "user1", ChatMessage.ROLE_USER, "用户1消息" + i, i);
+        }
+        for (int i = 0; i < 7; i++) {
+            insert(0, "user2", "user2", ChatMessage.ROLE_USER, "用户2消息" + i, 100 + i);
+        }
+        insert(1, "group1", "user1", ChatMessage.ROLE_USER, "群消息", 200);
+
+        ChatMessagePage first = repository.page(1, 10, "user1", null, null);
+        assertEquals(14, first.getTotal());
+        assertEquals(10, first.getMessages().size());
+        assertEquals(1, first.getPage());
+        assertTrue(first.isHasNext());
+
+        ChatMessagePage second = repository.page(2, 10, "user1", null, null);
+        assertEquals(4, second.getMessages().size());
+        assertTrue(second.isHasPrev());
+
+        ChatMessagePage group = repository.page(1, 20, null, 1, "group1");
+        assertEquals(1, group.getTotal());
+        assertEquals("群消息", group.getMessages().get(0).getContent());
+
+        ChatMessagePage allPrivate = repository.page(1, 100, null, 0, null);
+        assertEquals(20, allPrivate.getTotal());
+        ChatMessagePage allGroup = repository.page(1, 100, null, 1, null);
+        assertEquals(1, allGroup.getTotal());
+
+        ChatMessagePage user2 = repository.page(1, 10, "user2", null, null);
+        assertEquals(7, user2.getTotal());
+        assertEquals(7, user2.getMessages().size());
+        assertEquals(1, user2.getTotalPages());
+    }
+
     private void insert(int convType, String convTarget, String role, String content, long time) {
+        insert(convType, convTarget, "sender", role, content, time);
+    }
+
+    private void insert(int convType, String convTarget, String sender, String role, String content, long time) {
         ChatMessage message = new ChatMessage();
         message.setConvType(convType);
         message.setConvTarget(convTarget);
-        message.setSender("sender");
+        message.setSender(sender);
         message.setRole(role);
         message.setContent(content);
         message.setSendTime(time);

@@ -1,5 +1,10 @@
 package cn.wildfirechat.app.chat;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+
 /**
  * 会话中的一条聊天记录，用于持久化用户与机器人的对话内容。
  */
@@ -69,5 +74,10 @@ public class ChatMessage {
 
     public void setSendTime(long sendTime) {
         this.sendTime = sendTime;
+    }
+
+    public String getSendTimeText() {
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(sendTime), ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 }

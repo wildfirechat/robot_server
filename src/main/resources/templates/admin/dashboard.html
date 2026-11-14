@@ -2,7 +2,8 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{admin/fragments :: head('概览')}"></head>
 <body>
-<header th:replace="~{admin/fragments :: nav}"></header>
+<div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar('dashboard')}"></aside>
 <main class="container">
     <h1>运行概览</h1>
     <p class="subtle">
@@ -101,5 +102,6 @@
         </section>
     </div>
 </main>
+</div>
 </body>
 </html>

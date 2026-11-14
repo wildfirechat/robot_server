@@ -199,6 +199,25 @@ public class RobotConfig {
         /** 相邻块重叠字符数 */
         private volatile int chunkOverlap = 100;
 
+        /** 整站抓取最大页数 */
+        private volatile int crawlMaxPages = 1000;
+        /** 整站抓取最大深度 */
+        private volatile int crawlMaxDepth = 5;
+        /** 单页最大响应字节数 */
+        private volatile int crawlMaxPageBytes = 5 * 1024 * 1024;
+        /** 整站最大抓取总字节数 */
+        private volatile long crawlMaxTotalBytes = 200L * 1024 * 1024;
+        /** 整站抓取最大时长（秒） */
+        private volatile int crawlMaxDurationSeconds = 600;
+        /** 两次请求的最小间隔（毫秒） */
+        private volatile int crawlIntervalMs = 300;
+        /** 是否允许抓取内网/私有地址 */
+        private volatile boolean crawlAllowPrivateHosts = false;
+        /** 是否遵守 robots.txt */
+        private volatile boolean crawlRespectRobots = true;
+        /** 抓取 User-Agent */
+        private volatile String crawlUserAgent = "WildfireRAG/1.0";
+
         public boolean isEnabled() {
             return enabled;
         }
@@ -269,6 +288,78 @@ public class RobotConfig {
 
         public void setChunkOverlap(int chunkOverlap) {
             this.chunkOverlap = chunkOverlap;
+        }
+
+        public int getCrawlMaxPages() {
+            return crawlMaxPages;
+        }
+
+        public void setCrawlMaxPages(int crawlMaxPages) {
+            this.crawlMaxPages = crawlMaxPages;
+        }
+
+        public int getCrawlMaxDepth() {
+            return crawlMaxDepth;
+        }
+
+        public void setCrawlMaxDepth(int crawlMaxDepth) {
+            this.crawlMaxDepth = crawlMaxDepth;
+        }
+
+        public int getCrawlMaxPageBytes() {
+            return crawlMaxPageBytes;
+        }
+
+        public void setCrawlMaxPageBytes(int crawlMaxPageBytes) {
+            this.crawlMaxPageBytes = crawlMaxPageBytes;
+        }
+
+        public long getCrawlMaxTotalBytes() {
+            return crawlMaxTotalBytes;
+        }
+
+        public void setCrawlMaxTotalBytes(long crawlMaxTotalBytes) {
+            this.crawlMaxTotalBytes = crawlMaxTotalBytes;
+        }
+
+        public int getCrawlMaxDurationSeconds() {
+            return crawlMaxDurationSeconds;
+        }
+
+        public void setCrawlMaxDurationSeconds(int crawlMaxDurationSeconds) {
+            this.crawlMaxDurationSeconds = crawlMaxDurationSeconds;
+        }
+
+        public int getCrawlIntervalMs() {
+            return crawlIntervalMs;
+        }
+
+        public void setCrawlIntervalMs(int crawlIntervalMs) {
+            this.crawlIntervalMs = crawlIntervalMs;
+        }
+
+        public boolean isCrawlAllowPrivateHosts() {
+            return crawlAllowPrivateHosts;
+        }
+
+        public void setCrawlAllowPrivateHosts(boolean crawlAllowPrivateHosts) {
+            this.crawlAllowPrivateHosts = crawlAllowPrivateHosts;
+        }
+
+        public boolean isCrawlRespectRobots() {
+            return crawlRespectRobots;
+        }
+
+        public void setCrawlRespectRobots(boolean crawlRespectRobots) {
+            this.crawlRespectRobots = crawlRespectRobots;
+        }
+
+        public String getCrawlUserAgent() {
+            return crawlUserAgent;
+        }
+
+        public void setCrawlUserAgent(String crawlUserAgent) {
+            this.crawlUserAgent = crawlUserAgent;
         }
     }
 }

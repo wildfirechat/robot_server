@@ -160,14 +160,29 @@ public class LlmReplyServiceTest {
     }
 
     @Test
-    public void disabledLlmRepliesHintWithoutCallingServer() throws Exception {
+    public void typingIsRefreshedWhileWaitingForFirstResponse() throws Exception {
+        server.delayMs = 7_500;
+        server.responseBody = "data: {\"choices\":[{\"delta\":{\"content\":\"慢回复\"}}]}\n\n"
+                + "data: [DONE]\n\n";
+
+        replyService.reply(conversation(), "user1", "慢问题", 0, sender);
+
+        assertEquals(2, typingMessages().size(), "6 秒有效期后应再发一次 typing");
+    }
+
+    @Test
+    public void disabledLlmRepliesHintAsStreamingMessages() throws Exception {
         config.getLlm().setEnabled(false);
 
         replyService.reply(conversation(), "user1", "现在的问题", 0, sender);
 
         assertTrue(server.requestBodies.isEmpty());
-        assertEquals(1, sender.messages.size());
-        assertTrue(sender.messages.get(0).payload.getSearchableContent().contains("未开启"));
+        assertTrue(typingMessages().isEmpty());
+        assertTrue(sender.messages.size() >= 2);
+        assertEquals(STREAM_GENERATING_TYPE, sender.messages.get(0).payload.getType());
+        Sent last = sender.messages.get(sender.messages.size() - 1);
+        assertEquals(STREAM_GENERATED_TYPE, last.payload.getType());
+        assertTrue(last.payload.getSearchableContent().contains("未开启"));
         assertTrue(repository.findRecent(0, "user1", 5).isEmpty());
     }
 

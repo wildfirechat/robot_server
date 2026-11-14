@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 
 /**
- * 单机内存向量索引。文档处理完成后 reload，多实例部署时每个实例各自加载。
+ * 向量检索入口：PostgreSQL 模式走 pgvector 数据库检索；H2 测试模式走内存索引。
  */
 @Component
 public class KnowledgeVectorIndex {
@@ -26,6 +26,12 @@ public class KnowledgeVectorIndex {
     }
 
     public synchronized void reload() {
+        if (repository.isPostgres()) {
+            entries = Collections.emptyList();
+            loaded = true;
+            LOG.info("PostgreSQL 模式使用数据库向量检索，无需加载内存索引");
+            return;
+        }
         try {
             List<VectorEntry> loadedEntries = new ArrayList<>();
             for (VectorEntry entry : repository.findAllVectors()) {
@@ -45,13 +51,33 @@ public class KnowledgeVectorIndex {
     }
 
     public int size() {
+        if (repository.isPostgres()) {
+            long count = repository.countReadyChunks();
+            return count > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) count;
+        }
         ensureLoaded();
         return entries.size();
+    }
+
+    public boolean isEmpty() {
+        if (repository.isPostgres()) {
+            return !repository.hasReadyChunks();
+        }
+        return size() == 0;
     }
 
     public List<ScoredChunk> search(float[] query, int topK, double threshold) {
         if (query == null || query.length == 0 || topK <= 0) {
             return Collections.emptyList();
+        }
+        if (repository.isPostgres()) {
+            List<KnowledgeRepository.ScoredVector> scored = repository.searchSimilar(query, topK, threshold);
+            List<ScoredChunk> result = new ArrayList<>(scored.size());
+            for (KnowledgeRepository.ScoredVector item : scored) {
+                result.add(new ScoredChunk(item.getChunkId(), item.getDocumentId(),
+                        item.getChunkIndex(), item.getTitle(), item.getScore()));
+            }
+            return result;
         }
         ensureLoaded();
         float[] normalizedQuery = VectorMath.normalizeCopy(query);
@@ -77,6 +103,10 @@ public class KnowledgeVectorIndex {
     }
 
     private void ensureLoaded() {
+        if (repository.isPostgres()) {
+            loaded = true;
+            return;
+        }
         if (!loaded) {
             synchronized (this) {
                 if (!loaded) {

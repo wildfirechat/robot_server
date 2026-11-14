@@ -2,6 +2,7 @@ package cn.wildfirechat.app.stats;
 
 import cn.wildfirechat.app.RobotConfig;
 import cn.wildfirechat.app.chat.ChatMessageRepository;
+import cn.wildfirechat.app.rag.KnowledgeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,12 +20,14 @@ public class RetentionService {
     private final RobotConfig robotConfig;
     private final ChatMessageRepository chatMessageRepository;
     private final LlmCallRepository llmCallRepository;
+    private final KnowledgeRepository knowledgeRepository;
 
     public RetentionService(RobotConfig robotConfig, ChatMessageRepository chatMessageRepository,
-                            LlmCallRepository llmCallRepository) {
+                            LlmCallRepository llmCallRepository, KnowledgeRepository knowledgeRepository) {
         this.robotConfig = robotConfig;
         this.chatMessageRepository = chatMessageRepository;
         this.llmCallRepository = llmCallRepository;
+        this.knowledgeRepository = knowledgeRepository;
     }
 
     @Scheduled(cron = "0 30 3 * * *")
@@ -38,8 +41,9 @@ public class RetentionService {
         try {
             int chats = chatMessageRepository.deleteBefore(cutoff);
             int calls = llmCallRepository.deleteBefore(cutoff);
-            LOG.info("已清理 {} 天前的数据: chat_message {} 条, llm_call {} 条",
-                    retentionDays, chats, calls);
+            int ragLogs = knowledgeRepository.deleteQueryLogsBefore(cutoff);
+            LOG.info("已清理 {} 天前的数据: chat_message {} 条, llm_call {} 条, rag_query_log {} 条",
+                    retentionDays, chats, calls, ragLogs);
         } catch (Exception e) {
             LOG.error("清理历史数据失败", e);
         }

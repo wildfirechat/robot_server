@@ -1,6 +1,9 @@
 package cn.wildfirechat.app.admin;
 
 import cn.wildfirechat.app.RobotConfig;
+import cn.wildfirechat.app.chat.ChatMessage;
+import cn.wildfirechat.app.chat.ChatMessagePage;
+import cn.wildfirechat.app.chat.ChatMessageRepository;
 import cn.wildfirechat.app.config.AdminConfigForm;
 import cn.wildfirechat.app.config.ConfigService;
 import cn.wildfirechat.app.rag.KnowledgeIngestService;
@@ -24,7 +27,16 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 管理后台页面：概览统计、配置管理、修改密码。
@@ -39,11 +51,14 @@ public class AdminController {
     private final KnowledgeIngestService knowledgeIngestService;
     private final KnowledgeRepository knowledgeRepository;
     private final RagService ragService;
+    private final ChatMessageRepository chatMessageRepository;
+    private final ImNameService imNameService;
 
     public AdminController(RobotConfig robotConfig, ConfigService configService,
                            StatsService statsService, AdminUserService adminUserService,
                            KnowledgeIngestService knowledgeIngestService,
-                           KnowledgeRepository knowledgeRepository, RagService ragService) {
+                           KnowledgeRepository knowledgeRepository, RagService ragService,
+                           ChatMessageRepository chatMessageRepository, ImNameService imNameService) {
         this.robotConfig = robotConfig;
         this.configService = configService;
         this.statsService = statsService;
@@ -51,6 +66,8 @@ public class AdminController {
         this.knowledgeIngestService = knowledgeIngestService;
         this.knowledgeRepository = knowledgeRepository;
         this.ragService = ragService;
+        this.chatMessageRepository = chatMessageRepository;
+        this.imNameService = imNameService;
     }
 
     @GetMapping
@@ -72,6 +89,114 @@ public class AdminController {
     @GetMapping("/login")
     public String login() {
         return "admin/login";
+    }
+
+    @GetMapping("/messages")
+    public String messages(@RequestParam(value = "convType", required = false) Integer convType,
+                           @RequestParam(value = "target", required = false) String target,
+                           @RequestParam(value = "page", defaultValue = "1") int page,
+                           @RequestParam(value = "size", defaultValue = "20") int size,
+                           Model model) {
+        Integer type = convType != null && (convType == 0 || convType == 1) ? convType : null;
+        String selectedTarget = type != null && StringUtils.hasText(target) ? target.trim() : null;
+        ChatMessagePage messagePage = chatMessageRepository.page(page, size, null, type, selectedTarget);
+
+        String selectedTargetName = selectedTarget == null ? "" : type == 0
+                ? imNameService.userName(selectedTarget) : imNameService.groupName(selectedTarget);
+
+        List<AdminMessageView> views = new ArrayList<>(messagePage.getMessages().size());
+        for (ChatMessage message : messagePage.getMessages()) {
+            String senderName = imNameService.userName(message.getSender());
+            String conversationName = message.getConvType() == 0
+                    ? imNameService.userName(message.getConvTarget())
+                    : imNameService.groupName(message.getConvTarget());
+            views.add(new AdminMessageView(message, senderName, conversationName));
+        }
+
+        model.addAttribute("messagePage", messagePage);
+        model.addAttribute("messageViews", views);
+        model.addAttribute("convType", type);
+        model.addAttribute("target", selectedTarget == null ? "" : selectedTarget);
+        model.addAttribute("selectedTargetName", selectedTargetName);
+        model.addAttribute("size", messagePage.getPageSize());
+        return "admin/messages";
+    }
+
+    @GetMapping("/messages/users/search")
+    @ResponseBody
+    public Map<String, Object> searchUsers(@RequestParam(value = "field", defaultValue = "nickname") String field,
+                                           @RequestParam(value = "keyword", required = false) String keyword) {
+        String search = keyword == null ? "" : keyword.trim();
+        String mode = "phone".equals(field) || "email".equals(field) ? field : "nickname";
+        Map<String, ImNameService.UserProfile> results = new LinkedHashMap<>();
+        if (search.isEmpty() || search.length() > 100) {
+            return searchResponse(results);
+        }
+        if ("phone".equals(mode)) {
+            imNameService.findByMobile(search).ifPresent(profile -> results.put(profile.getId(), profile));
+        }
+        Set<String> candidates = new LinkedHashSet<>(chatMessageRepository.recentUserTargets(200));
+        if (StringUtils.hasText(robotConfig.getIm_id())) {
+            candidates.remove(robotConfig.getIm_id());
+        }
+        for (String userId : candidates) {
+            if (results.size() >= 20) {
+                break;
+            }
+            ImNameService.UserProfile profile = imNameService.profile(userId);
+            if (matches(profile, mode, search)) {
+                results.put(profile.getId(), profile);
+            }
+        }
+        return searchResponse(results);
+    }
+
+    @GetMapping("/messages/groups/search")
+    @ResponseBody
+    public Map<String, Object> searchGroups(@RequestParam(value = "keyword", required = false) String keyword) {
+        String search = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        List<Map<String, Object>> results = new ArrayList<>();
+        if (search.isEmpty() || search.length() > 100) {
+            return Map.of("results", results);
+        }
+        for (String groupId : chatMessageRepository.recentConversationTargets(1, 200)) {
+            if (results.size() >= 20) {
+                break;
+            }
+            String name = imNameService.groupName(groupId);
+            if (name.toLowerCase(Locale.ROOT).contains(search)) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", groupId);
+                item.put("name", name);
+                results.add(item);
+            }
+        }
+        return Map.of("results", results);
+    }
+
+    private static boolean matches(ImNameService.UserProfile profile, String field, String keyword) {
+        String search = keyword.toLowerCase(Locale.ROOT);
+        if ("phone".equals(field)) {
+            return profile.getMobile() != null && profile.getMobile().contains(keyword);
+        }
+        if ("email".equals(field)) {
+            return profile.getEmail() != null
+                    && profile.getEmail().toLowerCase(Locale.ROOT).contains(search);
+        }
+        return profile.getName() != null && profile.getName().toLowerCase(Locale.ROOT).contains(search);
+    }
+
+    private static Map<String, Object> searchResponse(Map<String, ImNameService.UserProfile> profiles) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (ImNameService.UserProfile profile : profiles.values()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", profile.getId());
+            item.put("name", profile.getName());
+            item.put("mobile", profile.getMobile());
+            item.put("email", profile.getEmail());
+            results.add(item);
+        }
+        return Map.of("results", results);
     }
 
     @GetMapping("/config")
@@ -150,6 +275,19 @@ public class AdminController {
         try {
             knowledgeIngestService.ingestFile(title, file);
             redirectAttributes.addFlashAttribute("message", "文件已提交处理，请稍后刷新查看状态");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", e.getMessage());
+        }
+        return "redirect:/admin/knowledge";
+    }
+
+    @PostMapping("/knowledge/url")
+    public String ingestKnowledgeUrl(@RequestParam(value = "title", required = false) String title,
+                                     @RequestParam(value = "url", required = false) String url,
+                                     RedirectAttributes redirectAttributes) {
+        try {
+            knowledgeIngestService.ingestUrl(title, url);
+            redirectAttributes.addFlashAttribute("message", "网站抓取任务已提交，页面较多时需要等待一段时间");
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());
         }

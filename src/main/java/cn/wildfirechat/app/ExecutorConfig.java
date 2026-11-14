@@ -15,6 +15,22 @@ import java.util.concurrent.RejectedExecutionException;
 public class ExecutorConfig {
     private static final Logger LOG = LoggerFactory.getLogger(ExecutorConfig.class);
 
+    @Bean("ragCrawlExecutor")
+    public Executor ragCrawlExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("rag-crawl-");
+        executor.setRejectedExecutionHandler((runnable, pool) -> {
+            LOG.error("网站抓取队列已满，拒绝任务, active={}, queue={}",
+                    pool.getActiveCount(), pool.getQueue().size());
+            throw new RejectedExecutionException("网站抓取队列已满，请稍后再试");
+        });
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("ragIngestExecutor")
     public Executor ragIngestExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

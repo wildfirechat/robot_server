@@ -21,6 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
+        "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.url=jdbc:h2:mem:admin_security;DB_CLOSE_DELAY=-1",
         "ROBOT_ADMIN_PASSWORD=AdminPass12345"
 })
@@ -39,7 +40,7 @@ public class AdminSecurityTest {
                 .andExpect(redirectedUrlPattern("**/admin/login"));
         mockMvc.perform(get("/admin/login"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("机器人管理后台")));
+                .andExpect(content().string(containsString("智能助手管理后台")));
     }
 
     @Test
@@ -58,6 +59,9 @@ public class AdminSecurityTest {
         mockMvc.perform(get("/admin/knowledge").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("知识库")));
+        mockMvc.perform(get("/admin/messages").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("消息列表")));
     }
 
     @Test

@@ -8,6 +8,7 @@ public class KnowledgeChunk {
     private long documentId;
     private int chunkIndex;
     private String title;
+    private String sourceUrl;
     private String content;
     private float[] embedding;
     private long createdTime;
@@ -42,6 +43,14 @@ public class KnowledgeChunk {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
     }
 
     public String getContent() {

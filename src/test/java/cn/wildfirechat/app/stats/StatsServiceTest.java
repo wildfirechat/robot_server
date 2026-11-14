@@ -66,7 +66,7 @@ public class StatsServiceTest {
 
         List<DailyStat> days = stats.getDailyStats();
         assertEquals(7, days.size());
-        DailyStat today = days.get(days.size() - 1);
+        DailyStat today = days.get(0);
         assertEquals(LocalDate.now(), today.getDate());
         assertEquals(2, today.getTotalMessages());
         assertEquals(2, today.getLlmCalls());

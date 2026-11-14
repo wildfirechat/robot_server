@@ -6,6 +6,7 @@ import cn.wildfirechat.app.im.ImStreamingSender;
 import cn.wildfirechat.app.im.MessageSender;
 import cn.wildfirechat.app.rag.RagResult;
 import cn.wildfirechat.app.rag.RagService;
+import jakarta.annotation.PreDestroy;
 import cn.wildfirechat.app.stats.LlmCallRepository;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
@@ -19,6 +20,12 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -37,6 +44,10 @@ public class LlmReplyService {
     private static final String DISABLED_REPLY = "AI 回复功能尚未开启，请联系管理员在管理后台开启。";
     private static final String UNAVAILABLE_REPLY = "抱歉，AI 服务暂时不可用，请稍后再试。";
     private static final String EMPTY_QUESTION_REPLY = "你想问点什么呢？";
+    /** 未开启大模型时，提示语流式输出：每次 2 个字符 */
+    private static final int DISABLED_STREAM_CHARS = 2;
+    /** 未开启大模型时，提示语流式输出间隔 */
+    private static final long DISABLED_STREAM_INTERVAL_MS = 200;
 
     /** 单条用户消息最大字符数 */
     private static final int MAX_USER_TEXT_CHARS = 8000;
@@ -44,6 +55,8 @@ public class LlmReplyService {
     private static final int MAX_PROMPT_CHARS = 32000;
     /** 会话串行化锁数量，避免同一会话并发调用大模型 */
     private static final int CONVERSATION_LOCK_COUNT = 64;
+    /** typing 消息有效期 6 秒；等待 1 秒后刷新，避免等待首个回复时状态消失。 */
+    private static final long TYPING_REFRESH_INTERVAL_SECONDS = 7;
 
     private final OpenAiLlmClient llmClient;
     private final ChatHistoryService chatHistoryService;
@@ -51,6 +64,11 @@ public class LlmReplyService {
     private final LlmCallRepository llmCallRepository;
     private final RagService ragService;
     private final ReentrantLock[] conversationLocks = new ReentrantLock[CONVERSATION_LOCK_COUNT];
+    private final ScheduledExecutorService typingScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "typing-refresh");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     @Autowired
     public LlmReplyService(OpenAiLlmClient llmClient, ChatHistoryService chatHistoryService,
@@ -95,9 +113,18 @@ public class LlmReplyService {
     public void reply(Conversation conversation, String sender, String userText, long replyMessageId,
                       String mentionPrefix, String mentionedUserId, MessageSender messageSender) {
         RobotConfig.Llm llm = robotConfig.getLlm();
+        int convType = conversation.getType();
+        String convTarget = conversation.getTarget();
         if (!llm.isEnabled()) {
-            LOG.info("大模型回复未开启，忽略本次消息");
-            sendText(messageSender, conversation, replyMessageId, DISABLED_REPLY, mentionPrefix, mentionedUserId);
+            LOG.info("大模型回复未开启，使用流式提示语回复");
+            ReentrantLock lock = conversationLock(convType, convTarget);
+            lock.lock();
+            try {
+                streamFixedText(messageSender, conversation, replyMessageId, DISABLED_REPLY,
+                        mentionPrefix, mentionedUserId);
+            } finally {
+                lock.unlock();
+            }
             return;
         }
         if (userText == null || userText.trim().isEmpty()) {
@@ -105,25 +132,24 @@ public class LlmReplyService {
             return;
         }
 
-        // 先发 typing 消息，让用户立即看到「正在思考」，再等待会话锁/大模型
-        sendTyping(messageSender, conversation);
+        // 先发 typing，并在等待首个回复期间每 7 秒刷新一次（6 秒有效期 + 1 秒间隔）
+        TypingKeepAlive typing = startTyping(messageSender, conversation);
 
         String text = limitUserText(userText);
-        int convType = conversation.getType();
-        String convTarget = conversation.getTarget();
         ReentrantLock lock = conversationLock(convType, convTarget);
         lock.lock();
         try {
             doReply(conversation, sender, text, replyMessageId, messageSender, llm, convType, convTarget,
-                    mentionPrefix, mentionedUserId);
+                    mentionPrefix, mentionedUserId, typing);
         } finally {
+            typing.stop();
             lock.unlock();
         }
     }
 
     private void doReply(Conversation conversation, String sender, String userText, long replyMessageId,
                          MessageSender messageSender, RobotConfig.Llm llm, int convType, String convTarget,
-                         String mentionPrefix, String mentionedUserId) {
+                         String mentionPrefix, String mentionedUserId, TypingKeepAlive typing) {
         boolean saved = chatHistoryService.saveUserMessage(convType, convTarget, sender, userText);
         RagResult ragResult = ragService == null
                 ? RagResult.empty()
@@ -143,7 +169,16 @@ public class LlmReplyService {
                 messageSender, conversation, replyMessageId, llm.getStreamIntervalMs(),
                 mentionPrefix, mentionedUserId);
         try {
-            String answer = llmClient.chat(messages, streamingSender);
+            AtomicBoolean firstOutput = new AtomicBoolean(false);
+            OpenAiLlmClient.StreamListener listener = delta -> {
+                if (firstOutput.compareAndSet(false, true)) {
+                    typing.stop();
+                }
+                streamingSender.onDelta(delta);
+            };
+            String answer = llmClient.chat(messages, listener);
+            // 非流式响应不会回调 listener；流式没有内容时也要停止刷新
+            typing.stop();
             if (!llm.isStream() && answer != null && !answer.isEmpty()) {
                 streamingSender.onDelta(answer);
             }
@@ -170,6 +205,7 @@ public class LlmReplyService {
                 sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY, mentionPrefix, mentionedUserId);
             }
         } finally {
+            typing.stop();
             llmCallRepository.insert(convType, convTarget, sender, model, startedAt,
                     System.currentTimeMillis() - startedAt, success, error,
                     promptChars, streamingSender.getFullText().length());
@@ -265,6 +301,71 @@ public class LlmReplyService {
             messageSender.send(conversation, replyMessageId, payload);
         } catch (Exception e) {
             LOG.error("发送回复消息失败: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 以流式消息发送固定提示语：每 200ms 追加 2 个字符，最后发送完成消息。
+     */
+    private void streamFixedText(MessageSender messageSender, Conversation conversation, long replyMessageId,
+                                 String text, String mentionPrefix, String mentionedUserId) {
+        ImStreamingSender streamingSender = new ImStreamingSender(messageSender, conversation, replyMessageId,
+                DISABLED_STREAM_INTERVAL_MS, mentionPrefix, mentionedUserId);
+        try {
+            for (int i = 0; i < text.length(); i += DISABLED_STREAM_CHARS) {
+                int end = Math.min(text.length(), i + DISABLED_STREAM_CHARS);
+                streamingSender.onDelta(text.substring(i, end));
+                if (end < text.length()) {
+                    Thread.sleep(DISABLED_STREAM_INTERVAL_MS);
+                }
+            }
+            streamingSender.finish();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            try {
+                streamingSender.finish();
+            } catch (Exception finishError) {
+                LOG.warn("发送未开启提示结束消息失败: {}", finishError.getMessage());
+            }
+        } catch (Exception e) {
+            LOG.warn("发送未开启提示失败: {}", e.getMessage());
+            try {
+                streamingSender.finish();
+            } catch (Exception finishError) {
+                LOG.warn("发送未开启提示结束消息失败: {}", finishError.getMessage());
+            }
+        }
+    }
+
+    private TypingKeepAlive startTyping(MessageSender messageSender, Conversation conversation) {
+        sendTyping(messageSender, conversation);
+        try {
+            ScheduledFuture<?> future = typingScheduler.scheduleAtFixedRate(
+                    () -> sendTyping(messageSender, conversation),
+                    TYPING_REFRESH_INTERVAL_SECONDS, TYPING_REFRESH_INTERVAL_SECONDS, TimeUnit.SECONDS);
+            return new TypingKeepAlive(future);
+        } catch (RejectedExecutionException e) {
+            LOG.debug("typing 刷新任务提交失败: {}", e.getMessage());
+            return new TypingKeepAlive(null);
+        }
+    }
+
+    @PreDestroy
+    public void stopTypingScheduler() {
+        typingScheduler.shutdownNow();
+    }
+
+    private static final class TypingKeepAlive {
+        private final ScheduledFuture<?> future;
+
+        private TypingKeepAlive(ScheduledFuture<?> future) {
+            this.future = future;
+        }
+
+        private void stop() {
+            if (future != null) {
+                future.cancel(false);
+            }
         }
     }
 

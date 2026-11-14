@@ -38,13 +38,15 @@ public class RagResult {
         private final long chunkId;
         private final long documentId;
         private final String title;
+        private final String sourceUrl;
         private final String content;
         private final double score;
 
-        public RagHit(long chunkId, long documentId, String title, String content, double score) {
+        public RagHit(long chunkId, long documentId, String title, String sourceUrl, String content, double score) {
             this.chunkId = chunkId;
             this.documentId = documentId;
             this.title = title;
+            this.sourceUrl = sourceUrl;
             this.content = content;
             this.score = score;
         }
@@ -59,6 +61,10 @@ public class RagResult {
 
         public String getTitle() {
             return title;
+        }
+
+        public String getSourceUrl() {
+            return sourceUrl;
         }
 
         public String getContent() {

@@ -69,7 +69,8 @@ public class StatsService {
         Map<LocalDate, long[]> llmCalls = repository.dailyLlmCalls(weekStart);
         List<DailyStat> days = new ArrayList<>(7);
         long max = 0;
-        for (int i = 6; i >= 0; i--) {
+        // 最近 7 天按日期倒序：今天、昨天……6 天前
+        for (int i = 0; i <= 6; i++) {
             LocalDate date = today.minusDays(i);
             long[] messageCounts = messages.getOrDefault(date, new long[2]);
             long[] llmCounts = llmCalls.getOrDefault(date, new long[2]);

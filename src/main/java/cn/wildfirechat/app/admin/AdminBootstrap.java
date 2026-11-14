@@ -34,7 +34,9 @@ public class AdminBootstrap implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         if (repository.count() > 0) {
-            LOG.info("已存在管理员账号，跳过管理员初始化");
+            LOG.info("已存在管理员账号，跳过管理员初始化。如需重置管理员密码：停止服务后执行 "
+                    + "DELETE FROM admin_user WHERE username = 'admin';（使用自定义用户名时替换为实际用户名），"
+                    + "然后设置环境变量 ROBOT_ADMIN_PASSWORD 并重启服务；未设置或强度不足时会生成随机密码并打印在启动日志中。");
             return;
         }
         String username = environment.getProperty("ROBOT_ADMIN_USERNAME", "admin").trim();

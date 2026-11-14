@@ -48,6 +48,15 @@ public class ConfigService {
     static final String RAG_MAX_CONTEXT_CHARS = "robot.rag.max_context_chars";
     static final String RAG_CHUNK_SIZE = "robot.rag.chunk_size";
     static final String RAG_CHUNK_OVERLAP = "robot.rag.chunk_overlap";
+    static final String RAG_CRAWL_MAX_PAGES = "robot.rag.crawl.max_pages";
+    static final String RAG_CRAWL_MAX_DEPTH = "robot.rag.crawl.max_depth";
+    static final String RAG_CRAWL_MAX_PAGE_BYTES = "robot.rag.crawl.max_page_bytes";
+    static final String RAG_CRAWL_MAX_TOTAL_BYTES = "robot.rag.crawl.max_total_bytes";
+    static final String RAG_CRAWL_MAX_DURATION_SECONDS = "robot.rag.crawl.max_duration_seconds";
+    static final String RAG_CRAWL_INTERVAL_MS = "robot.rag.crawl.interval_ms";
+    static final String RAG_CRAWL_ALLOW_PRIVATE_HOSTS = "robot.rag.crawl.allow_private_hosts";
+    static final String RAG_CRAWL_RESPECT_ROBOTS = "robot.rag.crawl.respect_robots";
+    static final String RAG_CRAWL_USER_AGENT = "robot.rag.crawl.user_agent";
 
     private final AppConfigRepository repository;
     private final RobotConfig robotConfig;
@@ -125,6 +134,15 @@ public class ConfigService {
         values.put(RAG_MAX_CONTEXT_CHARS, String.valueOf(form.getRagMaxContextChars()));
         values.put(RAG_CHUNK_SIZE, String.valueOf(form.getRagChunkSize()));
         values.put(RAG_CHUNK_OVERLAP, String.valueOf(form.getRagChunkOverlap()));
+        values.put(RAG_CRAWL_MAX_PAGES, String.valueOf(form.getCrawlMaxPages()));
+        values.put(RAG_CRAWL_MAX_DEPTH, String.valueOf(form.getCrawlMaxDepth()));
+        values.put(RAG_CRAWL_MAX_PAGE_BYTES, String.valueOf(form.getCrawlMaxPageBytes()));
+        values.put(RAG_CRAWL_MAX_TOTAL_BYTES, String.valueOf(form.getCrawlMaxTotalBytes()));
+        values.put(RAG_CRAWL_MAX_DURATION_SECONDS, String.valueOf(form.getCrawlMaxDurationSeconds()));
+        values.put(RAG_CRAWL_INTERVAL_MS, String.valueOf(form.getCrawlIntervalMs()));
+        values.put(RAG_CRAWL_ALLOW_PRIVATE_HOSTS, String.valueOf(form.isCrawlAllowPrivateHosts()));
+        values.put(RAG_CRAWL_RESPECT_ROBOTS, String.valueOf(form.isCrawlRespectRobots()));
+        values.put(RAG_CRAWL_USER_AGENT, trim(form.getCrawlUserAgent()));
 
         repository.saveAll(values);
         apply(values);
@@ -196,6 +214,21 @@ public class ConfigService {
         if (form.getRagChunkOverlap() < 0 || form.getRagChunkOverlap() > form.getRagChunkSize() / 2) {
             throw new IllegalArgumentException("知识库分块重叠不能超过分块大小的一半");
         }
+        checkRange(form.getCrawlMaxPages(), 1, 1000, "整站抓取最大页数");
+        checkRange(form.getCrawlMaxDepth(), 1, 5, "整站抓取最大深度");
+        checkRange(form.getCrawlMaxPageBytes(), 1024 * 1024, 20 * 1024 * 1024, "单页最大字节数");
+        if (form.getCrawlMaxTotalBytes() < 10L * 1024 * 1024
+                || form.getCrawlMaxTotalBytes() > 1000L * 1024 * 1024) {
+            throw new IllegalArgumentException("整站最大抓取字节数必须在 10MB~1000MB 之间");
+        }
+        if (form.getCrawlMaxTotalBytes() < form.getCrawlMaxPageBytes()) {
+            throw new IllegalArgumentException("整站最大抓取字节数不能小于单页最大字节数");
+        }
+        checkRange(form.getCrawlMaxDurationSeconds(), 60, 3600, "整站抓取最大时长");
+        checkRange(form.getCrawlIntervalMs(), 0, 5000, "抓取请求间隔");
+        if (!StringUtils.hasText(form.getCrawlUserAgent()) || form.getCrawlUserAgent().length() > 255) {
+            throw new IllegalArgumentException("抓取 User-Agent 不能为空且不能超过255个字符");
+        }
     }
 
     private static void checkRange(int value, int min, int max, String field) {
@@ -257,6 +290,17 @@ public class ConfigService {
         rag.setMaxContextChars(intValue(values, RAG_MAX_CONTEXT_CHARS, rag.getMaxContextChars()));
         rag.setChunkSize(intValue(values, RAG_CHUNK_SIZE, rag.getChunkSize()));
         rag.setChunkOverlap(intValue(values, RAG_CHUNK_OVERLAP, rag.getChunkOverlap()));
+        rag.setCrawlMaxPages(intValue(values, RAG_CRAWL_MAX_PAGES, rag.getCrawlMaxPages()));
+        rag.setCrawlMaxDepth(intValue(values, RAG_CRAWL_MAX_DEPTH, rag.getCrawlMaxDepth()));
+        rag.setCrawlMaxPageBytes(intValue(values, RAG_CRAWL_MAX_PAGE_BYTES, rag.getCrawlMaxPageBytes()));
+        rag.setCrawlMaxTotalBytes(longValue(values, RAG_CRAWL_MAX_TOTAL_BYTES, rag.getCrawlMaxTotalBytes()));
+        rag.setCrawlMaxDurationSeconds(intValue(values, RAG_CRAWL_MAX_DURATION_SECONDS,
+                rag.getCrawlMaxDurationSeconds()));
+        rag.setCrawlIntervalMs(intValue(values, RAG_CRAWL_INTERVAL_MS, rag.getCrawlIntervalMs()));
+        rag.setCrawlAllowPrivateHosts(boolValue(values, RAG_CRAWL_ALLOW_PRIVATE_HOSTS,
+                rag.isCrawlAllowPrivateHosts()));
+        rag.setCrawlRespectRobots(boolValue(values, RAG_CRAWL_RESPECT_ROBOTS, rag.isCrawlRespectRobots()));
+        rag.setCrawlUserAgent(value(values, RAG_CRAWL_USER_AGENT, rag.getCrawlUserAgent()));
     }
 
     private Map<String, String> defaults() {
@@ -289,6 +333,15 @@ public class ConfigService {
         values.put(RAG_MAX_CONTEXT_CHARS, String.valueOf(rag.getMaxContextChars()));
         values.put(RAG_CHUNK_SIZE, String.valueOf(rag.getChunkSize()));
         values.put(RAG_CHUNK_OVERLAP, String.valueOf(rag.getChunkOverlap()));
+        values.put(RAG_CRAWL_MAX_PAGES, String.valueOf(rag.getCrawlMaxPages()));
+        values.put(RAG_CRAWL_MAX_DEPTH, String.valueOf(rag.getCrawlMaxDepth()));
+        values.put(RAG_CRAWL_MAX_PAGE_BYTES, String.valueOf(rag.getCrawlMaxPageBytes()));
+        values.put(RAG_CRAWL_MAX_TOTAL_BYTES, String.valueOf(rag.getCrawlMaxTotalBytes()));
+        values.put(RAG_CRAWL_MAX_DURATION_SECONDS, String.valueOf(rag.getCrawlMaxDurationSeconds()));
+        values.put(RAG_CRAWL_INTERVAL_MS, String.valueOf(rag.getCrawlIntervalMs()));
+        values.put(RAG_CRAWL_ALLOW_PRIVATE_HOSTS, String.valueOf(rag.isCrawlAllowPrivateHosts()));
+        values.put(RAG_CRAWL_RESPECT_ROBOTS, String.valueOf(rag.isCrawlRespectRobots()));
+        values.put(RAG_CRAWL_USER_AGENT, rag.getCrawlUserAgent());
         return values;
     }
 

@@ -17,6 +17,44 @@ public final class VectorMath {
         return buffer.array();
     }
 
+    /**
+     * pgvector 文本格式：[0.1,0.2] 或 0.1,0.2。
+     */
+    public static float[] fromString(String text) {
+        if (text == null || text.isBlank()) {
+            return new float[0];
+        }
+        String value = text.trim();
+        if (value.startsWith("[")) {
+            value = value.substring(1);
+        }
+        if (value.endsWith("]")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        if (value.isBlank()) {
+            return new float[0];
+        }
+        String[] parts = value.split(",");
+        float[] vector = new float[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            vector[i] = Float.parseFloat(parts[i].trim());
+        }
+        return vector;
+    }
+
+    public static String toVectorLiteral(float[] vector) {
+        StringBuilder builder = new StringBuilder(vector.length * 12 + 2);
+        builder.append('[');
+        for (int i = 0; i < vector.length; i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            builder.append(Float.toString(vector[i]));
+        }
+        builder.append(']');
+        return builder.toString();
+    }
+
     public static float[] fromBytes(byte[] bytes) {
         if (bytes == null) {
             return new float[0];

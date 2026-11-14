@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{admin/fragments :: head('消息')}"></head>
+<body>
+<div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar('messages')}"></aside>
+<main class="container">
+    <h1>消息</h1>
+    <p class="subtle">按时间倒序展示聊天记录。先选择会话类型，再通过搜索选择用户或群组；页面只显示名称，不显示内部 ID。</p>
+
+    <section class="panel">
+        <form id="message-filter" th:action="@{/admin/messages}" method="get" class="form">
+            <div class="form-grid">
+                <label>会话类型
+                    <select name="convType" data-conv-type>
+                        <option value="" th:selected="${convType == null}">全部会话</option>
+                        <option value="0" th:selected="${convType != null and convType == 0}">单聊</option>
+                        <option value="1" th:selected="${convType != null and convType == 1}">群聊</option>
+                    </select>
+                </label>
+                <label>当前会话
+                    <div class="target-picker">
+                        <input type="hidden" name="target" data-target th:value="${target}">
+                        <span class="target-name" data-selected-target
+                              th:text="${selectedTargetName == null or selectedTargetName.isEmpty()} ? '未选择' : ${selectedTargetName}">未选择</span>
+                        <button type="button" class="button-link" data-open-user-search
+                                th:if="${convType != null and convType == 0}">搜索用户</button>
+                        <button type="button" class="button-link" data-open-group-search
+                                th:if="${convType != null and convType == 1}">搜索群组</button>
+                    </div>
+                </label>
+                <label>每页条数
+                    <select name="size">
+                        <option value="20" th:selected="${size == 20}">20</option>
+                        <option value="50" th:selected="${size == 50}">50</option>
+                        <option value="100" th:selected="${size == 100}">100</option>
+                    </select>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="primary">查询</button>
+                <a class="button-link" th:href="@{/admin/messages}">重置</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <div class="section-head">
+            <h2>消息列表</h2>
+            <span class="help">共 <strong th:text="${messagePage.total}">0</strong> 条</span>
+        </div>
+        <table class="table">
+            <thead>
+            <tr><th>ID</th><th>时间</th><th>会话</th><th>发送者</th><th>角色</th><th>内容</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="msg : ${messageViews}">
+                <td th:text="${msg.id}">1</td>
+                <td class="nowrap" th:text="${msg.sendTimeText}">2026-01-01 12:00:00</td>
+                <td>
+                    <span th:text="${msg.convTypeText}">单聊</span>
+                    <div>
+                        <a class="conversation-link"
+                           th:href="@{/admin/messages(convType=${msg.convType}, target=${msg.convTarget}, size=${size})}"
+                           th:attr="data-conv-type=${msg.convType},data-conv-target=${msg.convTarget}"
+                           th:text="${msg.conversationName}"
+                           title="查看此会话消息">会话名称</a>
+                    </div>
+                </td>
+                <td th:text="${msg.senderName}">发送者</td>
+                <td><span class="tag" th:text="${msg.role}">user</span></td>
+                <td class="message-content">
+                    <details th:if="${msg.content != null and #strings.length(msg.content) > 200}">
+                        <summary th:text="${#strings.abbreviate(msg.content, 160)}">内容摘要</summary>
+                        <div class="message-full" th:text="${msg.content}">完整内容</div>
+                    </details>
+                    <span th:unless="${msg.content != null and #strings.length(msg.content) > 200}"
+                          th:text="${msg.content}">内容</span>
+                </td>
+            </tr>
+            <tr th:if="${#lists.isEmpty(messageViews)}">
+                <td colspan="6" class="empty">没有符合条件的消息</td>
+            </tr>
+            </tbody>
+        </table>
+
+        <div class="pagination" th:if="${messagePage.total > 0}">
+            <span>第 <strong th:text="${messagePage.page}">1</strong> / <span th:text="${messagePage.totalPages}">1</span> 页</span>
+            <a th:if="${messagePage.hasPrev}"
+               th:href="@{/admin/messages(page=${messagePage.page - 1}, size=${size}, convType=${convType}, target=${target})}">上一页</a>
+            <a th:if="${messagePage.hasNext}"
+               th:href="@{/admin/messages(page=${messagePage.page + 1}, size=${size}, convType=${convType}, target=${target})}">下一页</a>
+        </div>
+    </section>
+</main>
+</div>
+
+<div class="modal" data-search-modal hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-panel" role="dialog" aria-modal="true">
+        <div class="modal-head">
+            <h2 data-modal-title>搜索</h2>
+            <button type="button" class="modal-close" data-close-modal aria-label="关闭">×</button>
+        </div>
+
+        <div data-user-search hidden>
+            <div class="form-grid">
+                <label>搜索方式
+                    <select data-user-field>
+                        <option value="nickname">昵称</option>
+                        <option value="phone">手机号</option>
+                        <option value="email">邮箱</option>
+                    </select>
+                </label>
+                <label>关键词
+                    <input type="search" data-user-keyword maxlength="100" placeholder="输入昵称、手机号或邮箱">
+                </label>
+            </div>
+            <p class="help">昵称和邮箱搜索覆盖最近有消息的用户；手机号支持精确查询。</p>
+            <button type="button" class="primary" data-user-search-button>搜索</button>
+            <div class="search-results" data-user-results></div>
+        </div>
+
+        <div data-group-search hidden>
+            <label>群名称
+                <input type="search" data-group-keyword maxlength="100" placeholder="输入群名称搜索">
+            </label>
+            <p class="help">搜索最近有消息的群组。</p>
+            <button type="button" class="primary" data-group-search-button>搜索</button>
+            <div class="search-results" data-group-results></div>
+        </div>
+    </div>
+</div>
+
+<script th:src="@{/admin-messages.js}" defer></script>
+</body>
+</html>

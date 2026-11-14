@@ -2,7 +2,8 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{admin/fragments :: head('知识库')}"></head>
 <body>
-<header th:replace="~{admin/fragments :: nav}"></header>
+<div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar('knowledge')}"></aside>
 <main class="container">
     <h1>知识库</h1>
     <p class="subtle">上传或粘贴资料后，机器人会先检索资料再回答，并在回答中标注引用编号。当前分块数：<strong th:text="${chunkCount}">0</strong></p>
@@ -22,7 +23,7 @@
                 </label>
                 <label>文件
                     <input type="file" name="file" accept=".txt,.md,.markdown,.csv,.json,.pdf,.docx" required>
-                    <span class="help">支持 txt/md/csv/json/pdf/docx，单文件不超过 10MB</span>
+                    <span class="help">支持 txt/md/csv/json/pdf/docx，单文件不超过 50MB</span>
                 </label>
                 <button type="submit" class="primary">上传并处理</button>
             </form>
@@ -43,6 +44,22 @@
     </div>
 
     <section class="panel">
+        <h2>抓取网站</h2>
+        <p class="help">只抓取输入地址的完全相同域名，不抓子域名和外部链接；默认最多 5 层、1000 页，抓取限制可在“配置管理 → 知识库 / RAG”中调整。</p>
+        <form th:action="@{/admin/knowledge/url}" method="post" class="form">
+            <div class="form-grid">
+                <label>网站地址
+                    <input type="url" name="url" maxlength="2000" placeholder="https://example.com/docs/" required>
+                </label>
+                <label>标题
+                    <input type="text" name="title" maxlength="255" placeholder="留空使用地址">
+                </label>
+            </div>
+            <button type="submit" class="primary">开始抓取</button>
+        </form>
+    </section>
+
+    <section class="panel">
         <div class="section-head">
             <h2>文档列表</h2>
             <form th:action="@{/admin/knowledge/reindex}" method="post" class="inline-form">
@@ -56,7 +73,10 @@
             <tbody>
             <tr th:each="doc : ${documents}">
                 <td th:text="${doc.id}">1</td>
-                <td th:text="${doc.title}">文档</td>
+                <td>
+                    <div th:text="${doc.title}">文档</div>
+                    <div class="help" th:if="${doc.sourceUri}" th:text="${doc.sourceUri}"></div>
+                </td>
                 <td th:text="${doc.sourceType}">text</td>
                 <td>
                     <span class="tag" th:text="${doc.status}">READY</span>
@@ -95,7 +115,10 @@
                 <tbody>
                 <tr th:each="hit, stat : ${testResult.hits}">
                     <td th:text="${stat.count}">1</td>
-                    <td th:text="${hit.title}">标题</td>
+                    <td>
+                        <div th:text="${hit.title}">标题</div>
+                        <div class="help" th:if="${hit.sourceUrl}" th:text="${hit.sourceUrl}"></div>
+                    </td>
                     <td th:text="${#numbers.formatDecimal(hit.score, 1, 3)}">0.000</td>
                     <td th:text="${hit.content}">片段内容</td>
                 </tr>
@@ -105,5 +128,6 @@
         </div>
     </section>
 </main>
+</div>
 </body>
 </html>

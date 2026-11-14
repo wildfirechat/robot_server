@@ -35,6 +35,16 @@ public class AdminConfigForm {
     private int ragChunkSize = 600;
     private int ragChunkOverlap = 100;
 
+    private int crawlMaxPages = 1000;
+    private int crawlMaxDepth = 5;
+    private int crawlMaxPageBytes = 5 * 1024 * 1024;
+    private long crawlMaxTotalBytes = 200L * 1024 * 1024;
+    private int crawlMaxDurationSeconds = 600;
+    private int crawlIntervalMs = 300;
+    private boolean crawlAllowPrivateHosts;
+    private boolean crawlRespectRobots = true;
+    private String crawlUserAgent = "WildfireRAG/1.0";
+
     public static AdminConfigForm from(RobotConfig config) {
         AdminConfigForm form = new AdminConfigForm();
         form.setImId(config.getIm_id());
@@ -55,6 +65,26 @@ public class AdminConfigForm {
         form.setLlmHistoryLimit(llm.getHistoryLimit());
         form.setLlmStream(llm.isStream());
         form.setLlmStreamIntervalMs(llm.getStreamIntervalMs());
+
+        RobotConfig.Rag rag = config.getRag();
+        form.setRagEnabled(rag.isEnabled());
+        form.setRagEmbeddingBaseUrl(rag.getEmbeddingBaseUrl());
+        form.setRagEmbeddingApiKey("");
+        form.setRagEmbeddingModel(rag.getEmbeddingModel());
+        form.setRagTopK(rag.getTopK());
+        form.setRagScoreThreshold(rag.getScoreThreshold());
+        form.setRagMaxContextChars(rag.getMaxContextChars());
+        form.setRagChunkSize(rag.getChunkSize());
+        form.setRagChunkOverlap(rag.getChunkOverlap());
+        form.setCrawlMaxPages(rag.getCrawlMaxPages());
+        form.setCrawlMaxDepth(rag.getCrawlMaxDepth());
+        form.setCrawlMaxPageBytes(rag.getCrawlMaxPageBytes());
+        form.setCrawlMaxTotalBytes(rag.getCrawlMaxTotalBytes());
+        form.setCrawlMaxDurationSeconds(rag.getCrawlMaxDurationSeconds());
+        form.setCrawlIntervalMs(rag.getCrawlIntervalMs());
+        form.setCrawlAllowPrivateHosts(rag.isCrawlAllowPrivateHosts());
+        form.setCrawlRespectRobots(rag.isCrawlRespectRobots());
+        form.setCrawlUserAgent(rag.getCrawlUserAgent());
         return form;
     }
 
@@ -264,5 +294,77 @@ public class AdminConfigForm {
 
     public void setRagChunkOverlap(int ragChunkOverlap) {
         this.ragChunkOverlap = ragChunkOverlap;
+    }
+
+    public int getCrawlMaxPages() {
+        return crawlMaxPages;
+    }
+
+    public void setCrawlMaxPages(int crawlMaxPages) {
+        this.crawlMaxPages = crawlMaxPages;
+    }
+
+    public int getCrawlMaxDepth() {
+        return crawlMaxDepth;
+    }
+
+    public void setCrawlMaxDepth(int crawlMaxDepth) {
+        this.crawlMaxDepth = crawlMaxDepth;
+    }
+
+    public int getCrawlMaxPageBytes() {
+        return crawlMaxPageBytes;
+    }
+
+    public void setCrawlMaxPageBytes(int crawlMaxPageBytes) {
+        this.crawlMaxPageBytes = crawlMaxPageBytes;
+    }
+
+    public long getCrawlMaxTotalBytes() {
+        return crawlMaxTotalBytes;
+    }
+
+    public void setCrawlMaxTotalBytes(long crawlMaxTotalBytes) {
+        this.crawlMaxTotalBytes = crawlMaxTotalBytes;
+    }
+
+    public int getCrawlMaxDurationSeconds() {
+        return crawlMaxDurationSeconds;
+    }
+
+    public void setCrawlMaxDurationSeconds(int crawlMaxDurationSeconds) {
+        this.crawlMaxDurationSeconds = crawlMaxDurationSeconds;
+    }
+
+    public int getCrawlIntervalMs() {
+        return crawlIntervalMs;
+    }
+
+    public void setCrawlIntervalMs(int crawlIntervalMs) {
+        this.crawlIntervalMs = crawlIntervalMs;
+    }
+
+    public boolean isCrawlAllowPrivateHosts() {
+        return crawlAllowPrivateHosts;
+    }
+
+    public void setCrawlAllowPrivateHosts(boolean crawlAllowPrivateHosts) {
+        this.crawlAllowPrivateHosts = crawlAllowPrivateHosts;
+    }
+
+    public boolean isCrawlRespectRobots() {
+        return crawlRespectRobots;
+    }
+
+    public void setCrawlRespectRobots(boolean crawlRespectRobots) {
+        this.crawlRespectRobots = crawlRespectRobots;
+    }
+
+    public String getCrawlUserAgent() {
+        return crawlUserAgent;
+    }
+
+    public void setCrawlUserAgent(String crawlUserAgent) {
+        this.crawlUserAgent = crawlUserAgent;
     }
 }

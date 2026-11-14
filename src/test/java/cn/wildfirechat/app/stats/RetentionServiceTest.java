@@ -3,6 +3,7 @@ package cn.wildfirechat.app.stats;
 import cn.wildfirechat.app.RobotConfig;
 import cn.wildfirechat.app.chat.ChatMessage;
 import cn.wildfirechat.app.chat.ChatMessageRepository;
+import cn.wildfirechat.app.rag.KnowledgeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -30,7 +31,8 @@ public class RetentionServiceTest {
         chatMessageRepository = new ChatMessageRepository(jdbcTemplate);
         llmCallRepository = new LlmCallRepository(jdbcTemplate);
         robotConfig = new RobotConfig();
-        retentionService = new RetentionService(robotConfig, chatMessageRepository, llmCallRepository);
+        retentionService = new RetentionService(robotConfig, chatMessageRepository, llmCallRepository,
+                new KnowledgeRepository(jdbcTemplate));
     }
 
     @Test

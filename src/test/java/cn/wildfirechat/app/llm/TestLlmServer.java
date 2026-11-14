@@ -27,6 +27,7 @@ class TestLlmServer implements Closeable {
     volatile String responseBody = "";
     volatile String contentType = "text/event-stream; charset=utf-8";
     volatile int status = 200;
+    volatile long delayMs = 0;
 
     TestLlmServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -38,6 +39,13 @@ class TestLlmServer implements Closeable {
                 String authorization = exchange.getRequestHeaders().getFirst("Authorization");
                 authorizationHeaders.add(authorization == null ? "" : authorization);
 
+                if (delayMs > 0) {
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", contentType);
                 exchange.sendResponseHeaders(status, bytes.length);

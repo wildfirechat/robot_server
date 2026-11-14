@@ -2,7 +2,8 @@
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head th:replace="~{admin/fragments :: head('配置管理')}"></head>
 <body>
-<header th:replace="~{admin/fragments :: nav}"></header>
+<div class="layout">
+<aside th:replace="~{admin/fragments :: sidebar('config')}"></aside>
 <main class="container">
     <h1>配置管理</h1>
     <p class="subtle">所有配置保存在数据库中，保存后立即生效，无需重启服务。密钥类字段不会回显，留空表示保持原值。</p>
@@ -123,6 +124,43 @@
                     <input type="number" th:field="*{ragChunkOverlap}" min="0" max="1000">
                 </label>
             </div>
+
+            <h3 class="form-subtitle">网站抓取（整站）</h3>
+            <p class="help">只抓取输入地址的完全相同域名，不抓子域名、不抓外部链接；默认最多 5 层、1000 页。</p>
+            <div class="form-grid">
+                <label>最大抓取页数
+                    <input type="number" th:field="*{crawlMaxPages}" min="1" max="1000">
+                </label>
+                <label>最大抓取深度
+                    <input type="number" th:field="*{crawlMaxDepth}" min="1" max="5">
+                </label>
+                <label>单页最大字节数
+                    <input type="number" th:field="*{crawlMaxPageBytes}" min="1048576" max="20971520" step="1048576">
+                    <span class="help">默认 5MB（5242880 字节）</span>
+                </label>
+                <label>整站最大字节数
+                    <input type="number" th:field="*{crawlMaxTotalBytes}" min="10485760" max="1048576000" step="1048576">
+                    <span class="help">默认 200MB（209715200 字节）</span>
+                </label>
+                <label>最大抓取时长（秒）
+                    <input type="number" th:field="*{crawlMaxDurationSeconds}" min="60" max="3600">
+                </label>
+                <label>请求间隔（毫秒）
+                    <input type="number" th:field="*{crawlIntervalMs}" min="0" max="5000">
+                    <span class="help">默认 300ms，避免给目标站点造成压力</span>
+                </label>
+                <label>User-Agent
+                    <input type="text" th:field="*{crawlUserAgent}" maxlength="255">
+                </label>
+                <label class="checkbox">
+                    <input type="checkbox" th:field="*{crawlAllowPrivateHosts}">
+                    允许抓取内网/私有地址（内部 Wiki 才开启）
+                </label>
+                <label class="checkbox">
+                    <input type="checkbox" th:field="*{crawlRespectRobots}">
+                    遵守 robots.txt
+                </label>
+            </div>
         </fieldset>
 
         <fieldset>
@@ -141,5 +179,6 @@
         </div>
     </form>
 </main>
+</div>
 </body>
 </html>

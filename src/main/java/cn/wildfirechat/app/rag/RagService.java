@@ -38,7 +38,7 @@ public class RagService {
             return RagResult.empty();
         }
 
-        if (vectorIndex.size() == 0) {
+        if (vectorIndex.isEmpty()) {
             return RagResult.empty();
         }
 
@@ -79,14 +79,17 @@ public class RagService {
                 if (content.length() > allowed) {
                     content = content.substring(0, allowed) + "…";
                 }
-                String block = "[" + index + "] " + title + "\n" + content + "\n\n";
+                String sourceUrl = chunk.getSourceUrl();
+                String block = "[" + index + "] " + title
+                        + (sourceUrl == null || sourceUrl.isEmpty() ? "" : "\n来源: " + sourceUrl)
+                        + "\n" + content + "\n\n";
                 if (block.length() > remaining) {
                     break;
                 }
                 context.append(block);
                 remaining -= block.length();
                 hits.add(new RagResult.RagHit(chunk.getId(), chunk.getDocumentId(), title,
-                        chunk.getContent(), scoredChunk.getScore()));
+                        chunk.getSourceUrl(), chunk.getContent(), scoredChunk.getScore()));
                 index++;
             }
 

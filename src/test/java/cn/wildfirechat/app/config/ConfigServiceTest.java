@@ -80,6 +80,35 @@ public class ConfigServiceTest {
     }
 
     @Test
+    public void ragAndCrawlSettingsAreMappedBackToForm() {
+        AdminConfigForm form = validForm();
+        form.setRagEnabled(true);
+        form.setRagEmbeddingBaseUrl("http://127.0.0.1:8000/v1");
+        form.setRagEmbeddingModel("qwen3-embedding:8b");
+        form.setRagTopK(8);
+        form.setCrawlMaxPages(321);
+        form.setCrawlMaxDepth(3);
+        form.setCrawlAllowPrivateHosts(true);
+
+        configService.save(form);
+
+        assertTrue(robotConfig.getRag().isEnabled());
+        assertEquals("qwen3-embedding:8b", robotConfig.getRag().getEmbeddingModel());
+        assertEquals(8, robotConfig.getRag().getTopK());
+        assertEquals(321, robotConfig.getRag().getCrawlMaxPages());
+        assertEquals(3, robotConfig.getRag().getCrawlMaxDepth());
+        assertTrue(robotConfig.getRag().isCrawlAllowPrivateHosts());
+
+        AdminConfigForm reloaded = AdminConfigForm.from(robotConfig);
+        assertTrue(reloaded.isRagEnabled());
+        assertEquals("qwen3-embedding:8b", reloaded.getRagEmbeddingModel());
+        assertEquals(8, reloaded.getRagTopK());
+        assertEquals(321, reloaded.getCrawlMaxPages());
+        assertEquals(3, reloaded.getCrawlMaxDepth());
+        assertTrue(reloaded.isCrawlAllowPrivateHosts());
+    }
+
+    @Test
     public void blankApiKeyKeepsOldValueAndClearApiKeyRemovesIt() {
         AdminConfigForm form = validForm();
         form.setLlmApiKey("first-key");
