@@ -9,6 +9,7 @@ import cn.wildfirechat.sdk.messagecontent.StreamTextGeneratingMessageContent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,6 +32,8 @@ public class ImStreamingSender implements OpenAiLlmClient.StreamListener {
     private final Conversation conversation;
     private final long replyMessageId;
     private final long intervalMs;
+    private final String mentionPrefix;
+    private final String mentionedUserId;
     private final String streamId = UUID.randomUUID().toString();
     private final StringBuilder fullText = new StringBuilder();
     private final AtomicInteger pendingSends = new AtomicInteger();
@@ -43,10 +46,18 @@ public class ImStreamingSender implements OpenAiLlmClient.StreamListener {
 
     public ImStreamingSender(MessageSender messageSender, Conversation conversation,
                              long replyMessageId, long intervalMs) {
+        this(messageSender, conversation, replyMessageId, intervalMs, null, null);
+    }
+
+    public ImStreamingSender(MessageSender messageSender, Conversation conversation,
+                             long replyMessageId, long intervalMs,
+                             String mentionPrefix, String mentionedUserId) {
         this.messageSender = messageSender;
         this.conversation = conversation;
         this.replyMessageId = replyMessageId;
         this.intervalMs = intervalMs > 0 ? intervalMs : DEFAULT_INTERVAL_MS;
+        this.mentionPrefix = mentionPrefix;
+        this.mentionedUserId = mentionedUserId;
     }
 
     @Override
@@ -146,12 +157,16 @@ public class ImStreamingSender implements OpenAiLlmClient.StreamListener {
     }
 
     private void send(String text, boolean lastChunk) throws Exception {
+        String displayText = mentionPrefix == null ? text : mentionPrefix + text;
         MessageContent content = lastChunk
-                ? new StreamTextGeneratedMessageContent(text, streamId)
-                : new StreamTextGeneratingMessageContent(text, streamId);
+                ? new StreamTextGeneratedMessageContent(displayText, streamId)
+                : new StreamTextGeneratingMessageContent(displayText, streamId);
+        if (mentionedUserId != null) {
+            content.mentionedType(1).mentionedTargets(Collections.singletonList(mentionedUserId));
+        }
         MessagePayload payload = content.encode();
         messageSender.send(conversation, replyMessageId, payload);
-        LOG.debug("推送流式文本, finished:{}, length:{}, streamId:{}", lastChunk, text.length(), streamId);
+        LOG.debug("推送流式文本, finished:{}, length:{}, streamId:{}", lastChunk, displayText.length(), streamId);
     }
 
     public String getFullText() {

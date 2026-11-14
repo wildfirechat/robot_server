@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class LlmReplyServiceTest {
     private static final int STREAM_GENERATING_TYPE = 14;
     private static final int STREAM_GENERATED_TYPE = 15;
+    private static final int TYPING_TYPE = 91;
 
     private TestLlmServer server;
     private RobotConfig config;
@@ -93,14 +94,20 @@ public class LlmReplyServiceTest {
         assertEquals("user", messages.get(30).getAsJsonObject().get("role").getAsString());
         assertEquals("现在的问题", messages.get(30).getAsJsonObject().get("content").getAsString());
 
-        // 第一次增量立即推送，第二次因未到间隔被合并，最后发送结束消息
-        assertEquals(2, sender.messages.size());
-        Sent first = sender.messages.get(0);
+        // typing 消息 + 第一次增量 + 结束消息
+        assertEquals(3, sender.messages.size());
+        assertEquals(1, typingMessages().size());
+        assertEquals(TYPING_TYPE, typingMessages().get(0).payload.getType());
+        assertEquals(4, typingMessages().get(0).payload.getPersistFlag());
+
+        List<Sent> streamMessages = chatMessages();
+        assertEquals(2, streamMessages.size());
+        Sent first = streamMessages.get(0);
         assertEquals(123L, first.replyMessageId);
         assertEquals(STREAM_GENERATING_TYPE, first.payload.getType());
         assertEquals("答", first.payload.getSearchableContent());
 
-        Sent last = sender.messages.get(1);
+        Sent last = streamMessages.get(1);
         assertEquals(123L, last.replyMessageId);
         assertEquals(STREAM_GENERATED_TYPE, last.payload.getType());
         assertEquals("答案", last.payload.getSearchableContent());
@@ -122,8 +129,11 @@ public class LlmReplyServiceTest {
 
         replyService.reply(conversation(), "user1", "现在的问题", 0, sender);
 
-        assertEquals(1, sender.messages.size());
-        MessagePayload payload = sender.messages.get(0).payload;
+        assertEquals(2, sender.messages.size());
+        assertEquals(1, typingMessages().size());
+        MessagePayload payload = sender.messages.stream()
+                .filter(m -> m.payload.getType() == 1)
+                .findFirst().orElseThrow(IllegalStateException::new).payload;
         assertEquals(1, payload.getType());
         assertTrue(payload.getSearchableContent().contains("抱歉"), payload.getSearchableContent());
 
@@ -139,9 +149,13 @@ public class LlmReplyServiceTest {
 
         replyService.reply(conversation(), "user1", "现在的问题", 0, sender);
 
-        assertEquals(1, sender.messages.size());
-        assertEquals(1, sender.messages.get(0).payload.getType());
-        assertTrue(sender.messages.get(0).payload.getSearchableContent().contains("抱歉"));
+        assertEquals(2, sender.messages.size());
+        assertEquals(1, typingMessages().size());
+        MessagePayload payload = sender.messages.stream()
+                .filter(m -> m.payload.getType() == 1)
+                .findFirst().orElseThrow(IllegalStateException::new).payload;
+        assertEquals(1, payload.getType());
+        assertTrue(payload.getSearchableContent().contains("抱歉"));
         assertEquals(1, repository.findRecent(0, "user1", 5).size());
     }
 
@@ -190,6 +204,37 @@ public class LlmReplyServiceTest {
         assertEquals(2, recent.size());
         assertEquals(ChatMessage.ROLE_USER, recent.get(0).getRole());
         assertEquals(8000, recent.get(0).getContent().length());
+    }
+
+    @Test
+    public void groupReplyIncludesMentionButStoresRawAnswer() throws Exception {
+        server.responseBody = "data: {\"choices\":[{\"delta\":{\"content\":\"答\"}}]}\n\n"
+                + "data: [DONE]\n\n";
+
+        replyService.reply(conversation(), "user1", "问题", 0, "@小明 ", "user1", sender);
+
+        List<Sent> streamMessages = chatMessages();
+        assertEquals(2, streamMessages.size());
+        for (Sent sent : streamMessages) {
+            assertTrue(sent.payload.getSearchableContent().startsWith("@小明 "));
+            assertEquals(1, sent.payload.getMentionedType());
+            assertTrue(sent.payload.getMentionedTarget().contains("user1"));
+        }
+
+        List<ChatMessage> recent = repository.findRecent(0, "user1", 1);
+        assertEquals("答", recent.get(0).getContent());
+    }
+
+    private List<Sent> chatMessages() {
+        return sender.messages.stream()
+                .filter(m -> m.payload.getType() != TYPING_TYPE)
+                .toList();
+    }
+
+    private List<Sent> typingMessages() {
+        return sender.messages.stream()
+                .filter(m -> m.payload.getType() == TYPING_TYPE)
+                .toList();
     }
 
     private Conversation conversation() {

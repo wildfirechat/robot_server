@@ -1,5 +1,6 @@
 package cn.wildfirechat.app;
 
+import cn.wildfirechat.app.chat.ChatHistoryService;
 import cn.wildfirechat.app.im.MessageSender;
 import cn.wildfirechat.app.im.RobotMessageSender;
 import cn.wildfirechat.app.im.RobotServiceProvider;
@@ -16,6 +17,8 @@ import org.springframework.scheduling.annotation.Async;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @org.springframework.stereotype.Service
 public class ServiceImpl implements Service {
@@ -26,6 +29,12 @@ public class ServiceImpl implements Service {
 
     @Autowired
     private LlmReplyService llmReplyService;
+
+    @Autowired
+    private ChatHistoryService chatHistoryService;
+
+    private static final long USER_NAME_CACHE_TTL_MS = 10 * 60 * 1000L;
+    private final Map<String, CachedName> userNameCache = new ConcurrentHashMap<>();
 
     private final RobotServiceProvider robotServiceProvider;
 
@@ -66,12 +75,25 @@ public class ServiceImpl implements Service {
             }
         }
 
-        if (needResponse) {
+        if (!needResponse) {
+            // 群聊未被 @ 的消息只记录下来作为后续上下文，不回复
+            recordGroupMessage(messageData);
+            return;
+        }
+
+        {
             boolean replyMessage = messageData.getPayload().getMentionedTarget() != null && messageData.getPayload().getMentionedTarget().contains(mRobotConfig.getIm_id());
 
             Conversation conversation = messageData.getConv();
             if (conversation.getType() == 0) {
                 conversation.setTarget(messageData.getSender());
+            }
+
+            String mentionPrefix = null;
+            String mentionedUserId = null;
+            if (conversation.getType() == 1) {
+                mentionedUserId = messageData.getSender();
+                mentionPrefix = "@" + displayName(mentionedUserId) + " ";
             }
 
             String response = messageData.getPayload().getSearchableContent();
@@ -81,7 +103,8 @@ public class ServiceImpl implements Service {
             if (messageData.getPayload().getType() == 1) {
                 // 普通文本交给大模型，流式回复用户（会先保存消息并带上最近历史）
                 llmReplyService.reply(conversation, messageData.getSender(), response,
-                        replyMessage ? messageData.getMessageId() : 0, messageSender);
+                        replyMessage ? messageData.getMessageId() : 0,
+                        mentionPrefix, mentionedUserId, messageSender);
                 return;
             } else if (messageData.getPayload().getType() == 3) {
                 response = "不好意思，我还不会看照片哟～";
@@ -111,21 +134,10 @@ public class ServiceImpl implements Service {
             MessagePayload payload = new MessagePayload();
             payload.setType(1);
             payload.setSearchableContent(response);
-            if (conversation.getType() == 1 && messageData.getPayload().getType() == 1) { //群里的文本，加上@信息
-                InputOutputUserInfo sender = null;
-                try {
-                    IMResult<InputOutputUserInfo> result = robotServiceProvider.get().getUserInfo(messageData.getSender());
-                    if (result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS) {
-                        sender = result.getResult();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                if (sender != null && sender.getDisplayName() != null) {
-                    payload.setSearchableContent("@" + sender.getDisplayName() + " " + payload.getSearchableContent());
-                    payload.setMentionedType(1);
-                    payload.setMentionedTarget(Arrays.asList(messageData.getSender()));
-                }
+            if (conversation.getType() == 1) { // 群里的回复统一带上 @发送者
+                payload.setSearchableContent(mentionPrefix + payload.getSearchableContent());
+                payload.setMentionedType(1);
+                payload.setMentionedTarget(Arrays.asList(messageData.getSender()));
             }
             try {
                 IMResult<SendMessageResult> result;
@@ -147,6 +159,71 @@ public class ServiceImpl implements Service {
                 e.printStackTrace();
                 LOG.error("Send response execption");
             }
+        }
+    }
+
+    /**
+     * 群聊里没有 @ 机器人时，只保存用户消息作为后续上下文，不回复。
+     */
+    private void recordGroupMessage(OutputMessageData messageData) {
+        try {
+            if (messageData.getConv() == null || messageData.getConv().getType() != 1) {
+                return;
+            }
+            if (messageData.getPayload() == null || messageData.getPayload().getType() != 1) {
+                return;
+            }
+            String sender = messageData.getSender();
+            if (sender == null || sender.equals(mRobotConfig.getIm_id())) {
+                return;
+            }
+            String target = messageData.getConv().getTarget();
+            String content = messageData.getPayload().getSearchableContent();
+            if (target == null || content == null || content.trim().isEmpty()) {
+                return;
+            }
+            chatHistoryService.saveUserMessage(1, target, sender, content.trim());
+            LOG.debug("记录群消息, sender:{}, length:{}", sender, content.length());
+        } catch (Exception e) {
+            LOG.warn("记录群消息失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 获取用户显示名，带 10 分钟缓存；失败时回退为用户ID。
+     */
+    private String displayName(String userId) {
+        long now = System.currentTimeMillis();
+        CachedName cached = userNameCache.get(userId);
+        if (cached != null && now - cached.cachedAt < USER_NAME_CACHE_TTL_MS) {
+            return cached.name;
+        }
+        String name = userId;
+        try {
+            IMResult<InputOutputUserInfo> result = robotServiceProvider.get().getUserInfo(userId);
+            if (result != null && result.getErrorCode() == ErrorCode.ERROR_CODE_SUCCESS
+                    && result.getResult() != null
+                    && result.getResult().getDisplayName() != null
+                    && !result.getResult().getDisplayName().trim().isEmpty()) {
+                name = result.getResult().getDisplayName();
+            }
+        } catch (Exception e) {
+            LOG.debug("获取用户显示名失败, userId:{}: {}", userId, e.getMessage());
+        }
+        if (userNameCache.size() > 1000) {
+            userNameCache.clear();
+        }
+        userNameCache.put(userId, new CachedName(name, now));
+        return name;
+    }
+
+    private static class CachedName {
+        private final String name;
+        private final long cachedAt;
+
+        private CachedName(String name, long cachedAt) {
+            this.name = name;
+            this.cachedAt = cachedAt;
         }
     }
 }

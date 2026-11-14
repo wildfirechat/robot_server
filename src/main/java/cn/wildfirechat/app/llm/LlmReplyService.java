@@ -7,12 +7,15 @@ import cn.wildfirechat.app.im.MessageSender;
 import cn.wildfirechat.app.stats.LlmCallRepository;
 import cn.wildfirechat.pojos.Conversation;
 import cn.wildfirechat.pojos.MessagePayload;
+import cn.wildfirechat.sdk.messagecontent.MessageContent;
+import cn.wildfirechat.sdk.messagecontent.TypingMessageContent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -69,16 +72,28 @@ public class LlmReplyService {
      */
     public void reply(Conversation conversation, String sender, String userText,
                       long replyMessageId, MessageSender messageSender) {
+        reply(conversation, sender, userText, replyMessageId, null, null, messageSender);
+    }
+
+    /**
+     * @param mentionPrefix   群聊回复时加到消息前面的 @显示名，私聊传 null
+     * @param mentionedUserId 群聊回复要 @ 的用户ID，私聊传 null
+     */
+    public void reply(Conversation conversation, String sender, String userText, long replyMessageId,
+                      String mentionPrefix, String mentionedUserId, MessageSender messageSender) {
         RobotConfig.Llm llm = robotConfig.getLlm();
         if (!llm.isEnabled()) {
             LOG.info("大模型回复未开启，忽略本次消息");
-            sendText(messageSender, conversation, replyMessageId, DISABLED_REPLY);
+            sendText(messageSender, conversation, replyMessageId, DISABLED_REPLY, mentionPrefix, mentionedUserId);
             return;
         }
         if (userText == null || userText.trim().isEmpty()) {
-            sendText(messageSender, conversation, replyMessageId, EMPTY_QUESTION_REPLY);
+            sendText(messageSender, conversation, replyMessageId, EMPTY_QUESTION_REPLY, mentionPrefix, mentionedUserId);
             return;
         }
+
+        // 先发 typing 消息，让用户立即看到「正在思考」，再等待会话锁/大模型
+        sendTyping(messageSender, conversation);
 
         String text = limitUserText(userText);
         int convType = conversation.getType();
@@ -86,14 +101,16 @@ public class LlmReplyService {
         ReentrantLock lock = conversationLock(convType, convTarget);
         lock.lock();
         try {
-            doReply(conversation, sender, text, replyMessageId, messageSender, llm, convType, convTarget);
+            doReply(conversation, sender, text, replyMessageId, messageSender, llm, convType, convTarget,
+                    mentionPrefix, mentionedUserId);
         } finally {
             lock.unlock();
         }
     }
 
     private void doReply(Conversation conversation, String sender, String userText, long replyMessageId,
-                         MessageSender messageSender, RobotConfig.Llm llm, int convType, String convTarget) {
+                         MessageSender messageSender, RobotConfig.Llm llm, int convType, String convTarget,
+                         String mentionPrefix, String mentionedUserId) {
         boolean saved = chatHistoryService.saveUserMessage(convType, convTarget, sender, userText);
         List<LlmMessage> messages = buildMessages(convType, convTarget, userText, saved);
         messages = trimPrompt(messages);
@@ -107,7 +124,8 @@ public class LlmReplyService {
         String error = null;
 
         ImStreamingSender streamingSender = new ImStreamingSender(
-                messageSender, conversation, replyMessageId, llm.getStreamIntervalMs());
+                messageSender, conversation, replyMessageId, llm.getStreamIntervalMs(),
+                mentionPrefix, mentionedUserId);
         try {
             String answer = llmClient.chat(messages, streamingSender);
             if (!llm.isStream() && answer != null && !answer.isEmpty()) {
@@ -116,7 +134,7 @@ public class LlmReplyService {
             if (streamingSender.getFullText().isEmpty()) {
                 error = "大模型返回内容为空";
                 LOG.warn("大模型返回内容为空, convTarget:{}", convTarget);
-                sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY);
+                sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY, mentionPrefix, mentionedUserId);
                 return;
             }
             streamingSender.finish();
@@ -133,7 +151,7 @@ public class LlmReplyService {
                     LOG.warn("发送流式结束消息失败: {}", finishError.getMessage());
                 }
             } else {
-                sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY);
+                sendText(messageSender, conversation, replyMessageId, UNAVAILABLE_REPLY, mentionPrefix, mentionedUserId);
             }
         } finally {
             llmCallRepository.insert(convType, convTarget, sender, model, startedAt,
@@ -213,14 +231,31 @@ public class LlmReplyService {
     }
 
     private static void sendText(MessageSender messageSender, Conversation conversation,
-                                 long replyMessageId, String text) {
+                                 long replyMessageId, String text,
+                                 String mentionPrefix, String mentionedUserId) {
         MessagePayload payload = new MessagePayload();
         payload.setType(1);
-        payload.setSearchableContent(text);
+        payload.setSearchableContent((mentionPrefix == null ? "" : mentionPrefix) + text);
+        if (mentionedUserId != null) {
+            payload.setMentionedType(1);
+            payload.setMentionedTarget(Collections.singletonList(mentionedUserId));
+        }
         try {
             messageSender.send(conversation, replyMessageId, payload);
         } catch (Exception e) {
             LOG.error("发送回复消息失败: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 发送 typing 消息作为「正在思考」的即时反馈。失败不影响后续回复。
+     */
+    private static void sendTyping(MessageSender messageSender, Conversation conversation) {
+        try {
+            MessageContent content = new TypingMessageContent(TypingMessageContent.TYPING_TEXT);
+            messageSender.send(conversation, 0, content.encode());
+        } catch (Exception e) {
+            LOG.debug("发送 typing 消息失败: {}", e.getMessage());
         }
     }
 }
